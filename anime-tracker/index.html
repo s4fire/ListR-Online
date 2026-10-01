@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0d0c13">
   <meta name="description" content="Track anime with AniList search, personal episode progress, and optional secure cloud sync.">
-  <title>Afterglow — Anime Tracker</title>
+  <title>ListR — Anime Tracker</title>
   <link rel="preconnect" href="https://graphql.anilist.co">
   <link rel="preconnect" href="https://s4.anilist.co">
   <link rel="preconnect" href="https://cdn.jsdelivr.net">
@@ -18,9 +18,9 @@
   <div id="app-loading" class="app-loading" role="status">Checking your saved library…</div>
   <div class="app-shell">
     <header class="topbar">
-      <a class="brand" href="#watching" aria-label="Afterglow Anime Tracker home">
+      <a class="brand" href="#watching" aria-label="ListR home">
         <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
-        <span>afterglow<span class="brand-dot">.</span></span>
+        <span>ListR<span class="brand-dot">.</span></span>
       </a>
       <nav class="primary-nav" aria-label="Main navigation">
         <button class="nav-link is-active" type="button" data-view="watching">Watching <span class="nav-count" id="nav-watching">0</span></button>
@@ -105,13 +105,13 @@
         </div>
       </section>
 
-      <footer class="site-footer"><span>AFTERGLOW <i>·</i> ANIME TRACKER</span><span>Powered by <a href="https://anilist.co" target="_blank" rel="noreferrer">AniList</a> <span aria-hidden="true">✦</span></span></footer>
+      <footer class="site-footer"><span>LISTR <i>·</i> ANIME TRACKER</span><span>Powered by <a href="https://anilist.co" target="_blank" rel="noreferrer">AniList</a> <span aria-hidden="true">✦</span></span></footer>
     </main>
   </div>
 
   <dialog id="auth-dialog" class="auth-dialog" aria-labelledby="auth-title">
     <button class="dialog-close" id="close-auth" type="button" aria-label="Close account dialog">×</button>
-    <div class="auth-brand"><span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span><span>afterglow<span class="brand-dot">.</span></span></div>
+    <div class="auth-brand"><span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span><span>ListR<span class="brand-dot">.</span></span></div>
     <p class="eyebrow auth-eyebrow">YOUR LIST, WHEREVER YOU WATCH</p>
     <h2 id="auth-title">Welcome back.</h2>
     <p id="auth-intro" class="auth-intro">Sign in to load your private library from the cloud.</p>
@@ -130,6 +130,6 @@
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <noscript><div class="noscript">Afterglow needs JavaScript enabled to search AniList and manage your tracker.</div></noscript>
+  <noscript><div class="noscript">ListR needs JavaScript enabled to search AniList and manage your tracker.</div></noscript>
 </body>
 </html>
