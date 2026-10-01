@@ -18,9 +18,7 @@ function build() {
   modal.innerHTML = '<div class="text-list-head"><div><p class="eyebrow">IMPORT YOUR COLLECTION</p><h2>Text to List</h2><p>Paste your list, review the AniList matches, then import what you confirm.</p></div><button class="text-list-close" type="button">×</button></div><div class="text-list-body"><div id="text-list-step"></div></div>';
   document.body.appendChild(modal);
   modal.querySelector('.text-list-close').onclick = () => modal.close();
-  const b = document.createElement('button');
-  b.className = 'button button-quiet'; b.textContent = 'Text to List'; b.type = 'button'; b.onclick = open;
-  document.querySelector('#open-search')?.before(b);
+
 }
 
 function renderInput(msg = '') {
@@ -153,4 +151,20 @@ function renderImportProgress(done, total) {
   $('#text-list-step').innerHTML = '<div class="text-list-status progress"><span class="text-list-spinner"></span><span>Importing '+done+' / '+total+'…</span></div><div class="text-list-sub">Your confirmed anime are being added to your list.</div>';
 }
 
-window.addEventListener('DOMContentLoaded', build);
+function mountButton() {
+  if (document.querySelector('[data-action="open-text-list"]')) return;
+  const searchButton = document.querySelector('#open-search');
+  const b = document.createElement('button');
+  b.className = 'button button-quiet text-list-trigger';
+  b.textContent = 'Text to List';
+  b.type = 'button';
+  b.dataset.action = 'open-text-list';
+  b.onclick = open;
+  if (searchButton?.parentElement) {
+    searchButton.parentElement.insertBefore(b, searchButton);
+  } else {
+    document.querySelector('main')?.prepend(b);
+  }
+}
+window.addEventListener('DOMContentLoaded', () => { build(); mountButton(); });
+
