@@ -24,7 +24,8 @@ function build() {
 }
 
 function renderInput(msg = '') {
-  $('#text-list-step').innerHTML = '<textarea id="tl-source" class="text-list-input" placeholder="Watching\nFrieren: Beyond Journey's End 10\nOne Piece 1157\n\nCompleted\nDemon Slayer\n\nInterested\nSolo Leveling"></textarea><div class="text-list-options">No heading? <select id="tl-default"><option value="watching">Watching</option><option value="completed">Completed</option><option value="interested">Interested</option></select></div><p class="text-list-status '+(msg?'error':'')+'">'+esc(msg || 'Category headings require explicit watched counts for Watching and Completed.')+'</p><div class="text-list-actions"><button id="tl-parse" class="button button-primary" type="button">Parse list →</button></div>';
+  $('#text-list-step').innerHTML = '<textarea id="tl-source" class="text-list-input" placeholder="Watching\nFrieren: Beyond Journey's End 10\nOne Piece 1157\n\nCompleted\nDemon Slayer\n\nInterested\nSolo Leveling"></textarea><div class="text-list-options">No heading? ${customSelect("default","watching",[{value:"watching",label:"Watching"},{value:"completed",label:"Completed"},{value:"interested",label:"Interested"}])}</div><p class="text-list-status '+(msg?'error':'')+'">'+esc(msg || 'Category headings require explicit watched counts for Watching and Completed.')+'</p><div class="text-list-actions"><button id="tl-parse" class="button button-primary" type="button">Parse list →</button></div>';
+  bindCustomSelects();
   $('#tl-parse').onclick = parse;
 }
 
@@ -38,7 +39,7 @@ function applyDefaults(r) {
 }
 
 async function parse() {
-  const items = parseTextList($('#tl-source').value, $('#tl-default').value);
+  const items = parseTextList($('#tl-source').value, modal.querySelector('.tl-select[data-f="default"]').dataset.value);
   if (!items.length) { renderInput('No anime titles were detected.'); return; }
   rows = items.map((x, i) => ({...x, index:i, matches:[], media:null, score:0, warning:''}));
   renderProgress(0, rows.length, 'Starting AniList matching…');
@@ -46,7 +47,9 @@ async function parse() {
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
       renderProgress(i, rows.length, 'Finding AniList matches…');
-      r.matches = rankMatches(r.sourceTitle, await searchAnime(r.sourceTitle)).slice(0, 5);
+      const ranked = rankMatches(r.sourceTitle, await searchAnime(r.sourceTitle));
+      const seriesOnly = ranked.filter(x => Number(x.media?.episodes) > 1);
+      r.matches = (seriesOnly.length ? seriesOnly : ranked).slice(0, 5);
       r.media = r.matches[0]?.media || null;
       r.score = r.matches[0]?.score || 0;
       applyDefaults(r);
@@ -90,7 +93,7 @@ function bindCustomSelects() {
       if (row) syncRow(+row.dataset.row);
     });
   });
-  document.addEventListener('click', closeCustomSelects, {once:true});
+  if (!window.__tlOutsideBound) { document.addEventListener('click', closeCustomSelects); window.__tlOutsideBound = true; }
 }
 function closeCustomSelects() {
   modal.querySelectorAll('.tl-select.open').forEach(x => x.classList.remove('open'));
@@ -98,13 +101,12 @@ function closeCustomSelects() {
 
 
 function rowHtml(r) {
-  const opts = r.matches.map(m => '<option value="'+m.media.id+'" '+(r.media?.id===m.media.id?'selected':'')+'>'+esc(title(m.media))+(m.score<55?' · weak':'')+'</option>').join('') || '<option value="">No match</option>';
+  const matchOptions = r.matches.map(m => ({value:m.media.id,label:title(m.media)+(m.score<55?' · weak':'')}));
   const total = Number.isFinite(r.media?.episodes) && r.media.episodes > 0 ? Math.floor(r.media.episodes) : '?';
   const duplicate = r.media && hasAnimeId(r.media.id);
   const status = duplicate ? '<span class="text-list-duplicate">Already in your list</span>' : '<span class="text-list-ready">New</span>';
-  return '<div class="text-list-row '+(r.warning?'bad':'')+'" data-row="'+r.index+'"><div class="text-list-title">'+esc(r.sourceTitle)+'<div class="text-list-sub">'+esc(r.annotation || 'no episode annotation')+'</div></div>'+customSelect('match',r.media?.id||'',matchOptions)+' '+customSelect('cat',r.category,[{value:'watching',label:'Watching'},{value:'completed',label:'Completed'},{value:'interested',label:'Interested'}])'+(r.category==='interested'?'<span class="text-list-sub">—</span>':'<input data-f="watched" type="number" min="0" '+(total==='?'?'':'max="'+total+'"')+' value="'+(r.watched ?? '')+'" placeholder="Watched">')+'<span class="text-list-sub">Total: '+total+'</span>'+status+(r.warning?'<div class="text-list-warning">'+esc(r.warning)+'</div>':'')+'</div>';
+  return '<div class="text-list-row '+(r.warning?'bad':'')+'" data-row="'+r.index+'"><div class="text-list-title">'+esc(r.sourceTitle)+'<div class="text-list-sub">'+esc(r.annotation || 'no episode annotation')+'</div></div>'+customSelect('match',r.media?.id||'',matchOptions)+customSelect('cat',r.category,[{value:'watching',label:'Watching'},{value:'completed',label:'Completed'},{value:'interested',label:'Interested'}])+(r.category==='interested'?'<span class="text-list-sub">—</span>':'<input data-f="watched" type="number" min="0" '+(total==='?'?'':'max="'+total+'"')+' value="'+(r.watched ?? '')+'" placeholder="Watched">')+'<span class="text-list-sub">Total: '+total+'</span>'+status+(r.warning?'<div class="text-list-warning">'+esc(r.warning)+'</div>':'')+'</div>';
 }
-
 function syncRow(i) {
   const r = rows[i], el = modal.querySelector('[data-row="'+i+'"]');
   if (!r || !el) return;
