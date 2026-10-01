@@ -617,6 +617,21 @@ async function initializeAccount() {
 }
 
 // ----------------------------- Mutations -----------------------------------
+export function addImportedMedia(media, category, watched = null) {
+  const id = String(media.id);
+  if (entries.has(id)) return false;
+  const entry = createEntry(media, category);
+  if (category !== 'interested' && watched != null) entry.watched = clampWatched(watched, media.episodes);
+  entries.set(id, entry);
+  persistEntry(entry);
+  render();
+  return true;
+}
+
+export function hasAnimeId(id) {
+  return entries.has(String(id));
+}
+
 function addMedia(media, category) {
   const id = String(media.id);
   const existing = entries.get(id);
