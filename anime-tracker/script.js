@@ -5,7 +5,7 @@ import { enqueueCloudOperation, loadUserEntries, mergePendingOperations, readClo
 import { validateAuthFields } from './auth-validation.js';
 
 // ----------------------------- App state -----------------------------------
-const STORE_KEY = 'listr-anime-tracker-v1';
+const STORE_KEY = 'afterglow-anime-tracker-v1';
 const entries = new Map();
 function browserStorage() {
   try { return window.localStorage; } catch { return null; }
