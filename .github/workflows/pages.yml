@@ -12,7 +12,7 @@ permissions:
 
 concurrency:
   group: "pages"
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   deploy:
@@ -22,25 +22,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Prepare site
         run: |
-          rm -rf _site
+          rm -rf _site _unzipped
           mkdir _site
           unzip -q anime-tracker.zip -d _unzipped
           cp -R _unzipped/anime-tracker/. _site/
           rm -rf _site/tests
           touch _site/.nojekyll
 
-      - name: Configure Pages
+      - name: Setup Pages
         uses: actions/configure-pages@v5
 
-      - name: Upload site
-        uses: actions/upload-pages-artifact@v3
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v4
         with:
           path: ./_site
 
-      - name: Deploy to Pages
+      - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
