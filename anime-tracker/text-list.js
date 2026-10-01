@@ -18,6 +18,8 @@ function build() {
   modal.innerHTML = '<div class="text-list-head"><div><p class="eyebrow">IMPORT YOUR COLLECTION</p><h2>Text to List</h2><p>Paste your list, review the AniList matches, then import what you confirm.</p></div><button class="text-list-close" type="button">×</button></div><div class="text-list-body"><div id="text-list-step"></div></div>';
   document.body.appendChild(modal);
   modal.querySelector('.text-list-close').onclick = () => modal.close();
+  const trigger = document.querySelector('#open-text-list');
+  if (trigger) trigger.onclick = open;
 
 }
 
