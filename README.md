@@ -1,4 +1,4 @@
-# ListR / Afterglow
+# ListR
 
 A static anime tracker in `anime-tracker/`, deployed to GitHub Pages and backed by AniList for search/metadata. Guest lists remain in the current browser. Signed-in lists sync through Supabase Auth and Postgres, with a database-enforced owner boundary.
 
