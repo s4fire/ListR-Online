@@ -5,7 +5,7 @@ import { enqueueCloudOperation, loadUserEntries, mergePendingOperations, readClo
 import { validateAuthFields } from './auth-validation.js';
 
 // ----------------------------- App state -----------------------------------
-const STORE_KEY = 'afterglow-anime-tracker-v1';
+const STORE_KEY = 'listr-anime-tracker-v1';
 const entries = new Map();
 function browserStorage() {
   try { return window.localStorage; } catch { return null; }
@@ -40,6 +40,13 @@ const collectionGrid = $('#collection-grid');
 const collectionEmpty = $('#collection-empty');
 const searchResultsEl = $('#search-results');
 const searchMessage = $('#search-message');
+
+const PRODUCTION_AUTH_REDIRECT = 'https://s4fire.github.io/ListR-Online/';
+
+function getAuthRedirectUrl() {
+  if (window.location.hostname === 's4fire.github.io') return PRODUCTION_AUTH_REDIRECT;
+  return new URL(window.location.pathname, window.location.origin).href;
+}
 
 // ----------------------------- Storage -------------------------------------
 function persist() {
@@ -503,7 +510,7 @@ async function handleAuthSubmit(event) {
   setAuthMessage(authMode === 'register' ? 'Creating your account…' : 'Signing in…');
   try {
     if (authMode === 'register') {
-      const redirectTo = new URL(window.location.pathname, window.location.origin).href;
+      const redirectTo = getAuthRedirectUrl();
       const { data, error } = await supabaseClient.auth.signUp({
         email,
         password,
