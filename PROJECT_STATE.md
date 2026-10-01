@@ -40,10 +40,17 @@ Last updated: 2026-10-01
 - Existing confirmation emails containing localhost will remain invalid; a new confirmation email must be generated after the fix.
 
 ## Current planned work
-1. Finish ListR rebranding without renaming the GitHub repository.
-2. Fix production authentication redirects alongside the rebrand.
-3. Verify tests and GitHub Pages deployment.
+1. ListR rebranding is implemented in the frontend/documentation without renaming the GitHub repository.
+2. Production authentication redirect is now configured in script.js to use https://s4fire.github.io/ListR-Online/ on GitHub Pages; local development keeps its local origin.
+3. Supabase Authentication URL Configuration still needs to be confirmed/set to the production URL as Site URL and allowed redirect.
+4. Verify tests and GitHub Pages deployment after the changes.
 4. Later implement Text to List.
+
+## Rebrand checkpoint
+- Visible app branding in index.html is now ListR.
+- README branding is now ListR.
+- Existing guest localStorage key was intentionally preserved as `afterglow-anime-tracker-v1` so existing guest libraries are not lost during the rebrand.
+- Production auth redirect helper returns `https://s4fire.github.io/ListR-Online/` when hosted on `s4fire.github.io`; local development still uses the current local origin.
 
 ## Text to List requirements (future feature)
 - Input can contain standalone anime names, in which case the user chooses the category and normal defaults apply:
