@@ -10,7 +10,7 @@ Last updated: 2026-10-01
 - Repository name must NOT be changed.
 
 ## Application
-- App branding is being changed from the old Afterglow / Anime Tracker branding to ListR.
+- App branding has been changed from the old Afterglow / Anime Tracker branding to ListR.
 - Current code is a static HTML/CSS/vanilla-JS anime tracker.
 - Categories: Watching, Completed, Interested.
 - AniList GraphQL is used for search and metadata.
@@ -31,26 +31,27 @@ Last updated: 2026-10-01
 - Cloud sync is working; the app has shown “Cloud data synced successfully”.
 - Email confirmation is required in the current Supabase setup.
 
-## Authentication redirect issue
+## Authentication redirect checkpoint
 - Production auth redirects must return to:
   https://s4fire.github.io/ListR-Online/
-- The current registration code in anime-tracker/script.js still constructs emailRedirectTo from window.location.origin, which can become http://localhost:3000 when registration is performed from a development preview.
-- This needs to be changed so production does not send confirmation links to localhost.
-- Supabase Authentication URL Configuration must allow the production URL and use it as the Site URL. Local development may use an explicitly configured local URL.
-- Existing confirmation emails containing localhost will remain invalid; a new confirmation email must be generated after the fix.
-
-## Current planned work
-1. ListR rebranding is implemented in the frontend/documentation without renaming the GitHub repository.
-2. Production authentication redirect is now configured in script.js to use https://s4fire.github.io/ListR-Online/ on GitHub Pages; local development keeps its local origin.
-3. Supabase Authentication URL Configuration still needs to be confirmed/set to the production URL as Site URL and allowed redirect.
-4. Verify tests and GitHub Pages deployment after the changes.
-4. Later implement Text to List.
+- anime-tracker/script.js now uses getAuthRedirectUrl(): GitHub Pages production uses the fixed production URL; local development uses the current local origin.
+- The previous localhost redirect bug is fixed in the repository.
+- Existing confirmation emails containing localhost remain invalid; a new confirmation email must be generated after the correct Supabase URL Configuration is in place.
+- Supabase Authentication URL Configuration still needs to be confirmed/set externally: use the production Pages URL as Site URL and allow that exact URL as a Redirect URL. Local development may use an explicitly configured local URL.
 
 ## Rebrand checkpoint
-- Visible app branding in index.html is now ListR.
-- README branding is now ListR.
-- Existing guest localStorage key was intentionally preserved as `afterglow-anime-tracker-v1` so existing guest libraries are not lost during the rebrand.
-- Production auth redirect helper returns `https://s4fire.github.io/ListR-Online/` when hosted on `s4fire.github.io`; local development still uses the current local origin.
+- Visible app branding in index.html is now ListR, including the browser title, header brand, auth brand, footer, and accessibility labels/messages.
+- Root and app README branding is now ListR.
+- GitHub code search found no remaining “Afterglow” references after the rebrand.
+- Existing guest localStorage key was intentionally preserved as afterglow-anime-tracker-v1 so existing guest libraries are not lost during the rebrand.
+- The repository name remains s4fire/ListR-Online.
+- GitHub Actions Pages workflow run 36916575138 for commit 38b2d6e420f43b6c91b30d22005adb3de34e77b4 completed successfully, including frontend tests and syntax checks.
+
+## Current planned work
+1. Confirm the Supabase Authentication URL Configuration for production.
+2. Manually verify the production auth flow with a newly generated confirmation email.
+3. Once auth/rebrand is fully verified, move to Text to List.
+4. Preserve all existing tracker, guest, auth, cloud-sync, AniList, and RLS behavior while adding new features.
 
 ## Text to List requirements (future feature)
 - Input can contain standalone anime names, in which case the user chooses the category and normal defaults apply:
@@ -68,7 +69,7 @@ Last updated: 2026-10-01
 
 ## Working method across chats
 - GitHub repo is the code source of truth.
-- PROJECT_STATE.md is the handoff/source-of-context file for future coding chats.
-- At clean checkpoints, update this file and commit it with the code.
-- When a coding checkpoint is complete, tell the user to switch to a new chat inside the same ListR Project.
-- In the next chat, inspect the current repo/state before editing and continue from the recorded state.
+- PROJECT_STATE.md is the persistent technical handoff/source-of-context file for future coding chats.
+- Workflow: inspect current state → plan → code → test/verify → update PROJECT_STATE.md → commit → declare a clean checkpoint.
+- At each clean coding checkpoint, explicitly remind the user to switch to a new chat inside the same ListR Project.
+- In the next chat, inspect the latest repo and PROJECT_STATE.md before editing; do not assume the previous chat's state.
