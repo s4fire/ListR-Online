@@ -73,3 +73,13 @@ Last updated: 2026-10-01
 - Workflow: inspect current state → plan → code → test/verify → update PROJECT_STATE.md → commit → declare a clean checkpoint.
 - At each clean coding checkpoint, explicitly remind the user to switch to a new chat inside the same ListR Project.
 - In the next chat, inspect the latest repo and PROJECT_STATE.md before editing; do not assume the previous chat's state.
+
+## Text to List checkpoint
+- Text to List parser added at anime-tracker/text-import.js.
+- Text to List UI/import flow added at anime-tracker/text-list.js and loaded from index.html.
+- Supports standalone title lists with a chosen default category and category-headed lists for Watching/Completed/Interested.
+- Category-headed Watching/Completed entries require explicit watched counts before import; Interested does not.
+- Review stage shows source title, AniList match choices, category, watched count, total, and warnings.
+- Nothing is imported until the user confirms.
+- Duplicate handling reuses the existing AniList-ID-based add flow, so existing tracker/cloud/guest persistence remains the source of truth.
+- Next checkpoint: run the GitHub Pages workflow, manually test representative Text to List inputs, then fix any UX/parser issues found.
