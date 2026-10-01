@@ -25,12 +25,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Verify frontend
+        run: |
+          node --test anime-tracker/tests/*.test.mjs
+          for file in api.js core.js auth-validation.js cloud-store.js supabase-config.js script.js; do
+            node --check "anime-tracker/$file"
+          done
+
       - name: Prepare static site
         run: |
-          rm -rf _site _unzipped
+          rm -rf _site
           mkdir -p _site
-          unzip -q anime-tracker.zip -d _unzipped
-          cp -R _unzipped/anime-tracker/. _site/
+          cp -R anime-tracker/. _site/
           rm -rf _site/tests
           touch _site/.nojekyll
 
