@@ -83,3 +83,10 @@ Last updated: 2026-10-01
 - Nothing is imported until the user confirms.
 - Duplicate handling reuses the existing AniList-ID-based add flow, so existing tracker/cloud/guest persistence remains the source of truth.
 - Next checkpoint: run the GitHub Pages workflow, manually test representative Text to List inputs, then fix any UX/parser issues found.
+
+## Text to List UX fix checkpoint
+- Added visible progress feedback while AniList matches are being searched, including per-item progress, and while confirmed rows are being imported.
+- Reworked confirmed imports to use direct existing persistence helpers instead of repeatedly driving the normal search UI, reducing the previous clunky/slow import behavior.
+- Review now shows duplicate status by AniList media ID.
+- Standalone lists now apply normal defaults: Watching starts at 0 watched; Completed uses the known AniList total when available; Interested has no watched count.
+- Existing category-headed count requirements remain enforced.
