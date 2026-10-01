@@ -1,4 +1,4 @@
-# Afterglow — Anime Tracker
+# ListR — Anime Tracker
 
 A personal anime tracker built with **HTML5, CSS3, and vanilla JavaScript**. Guest lists stay in this browser; signed-in libraries use Supabase Auth and owner-protected Postgres rows. The app searches AniList’s public GraphQL API and remains deployable as static files.
 
