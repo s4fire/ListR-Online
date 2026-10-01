@@ -67,7 +67,9 @@ async function addViaExistingUI(r){
   form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
   for(let i=0;i<60;i++){await new Promise(x=>setTimeout(x,100));const btn=document.querySelector('#search-results [data-action="add-result"][data-id="'+r.media.id+'"]');if(btn){btn.click();break}}
   if(r.category!=='interested'&&r.watched!=null){
+    document.querySelector('[data-view="'+r.category+'"]')?.click();
     for(let i=0;i<40;i++){await new Promise(x=>setTimeout(x,75));const input=document.querySelector('#collection-grid [data-action="edit-count"][data-id="'+r.media.id+'"]');if(input){input.value=r.watched;input.dispatchEvent(new Event('change',{bubbles:true}));break}}
+    document.querySelector('#open-search')?.click();
   }
 }
 async function confirm(){
