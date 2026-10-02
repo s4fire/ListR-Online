@@ -346,6 +346,49 @@ async function actionCompleteSync(admin: any, userId: string) {
   return { state: 'connected', lastSyncedAt }
 }
 
+async function actionSendRecommendation(admin: any, userId: string, body: Record<string, unknown>) {
+  const recipientId = requireString(body.recipientId, 'recipient ID', 36, 36)
+  const mediaId = Number(body.mediaId)
+  if (!/^([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/iu.test(recipientId)
+    || !Number.isSafeInteger(mediaId) || mediaId < 1 || mediaId > 2147483647) {
+    throw Object.assign(new Error('A valid friend and AniList anime are required.'), { status: 400, code: 'invalid_request' })
+  }
+  const media = await fetchAniListAnimeById(mediaId)
+  const metadata = {
+    type: 'ANIME',
+    id: media.id,
+    isAdult: Boolean(media.isAdult),
+    title: media.title,
+  }
+  const { data, error } = await admin.rpc('create_list_r_recommendation_v2', {
+    p_recipient_id: recipientId,
+    p_media_id: mediaId,
+    p_metadata: metadata,
+  })
+  if (error) throw Object.assign(new Error(error.message || 'Could not send recommendation.'), { status: 400, code: 'recommendation_create_failed' })
+  const row = Array.isArray(data) ? data[0] : data
+  return { state: 'sent', recommendationId: row?.id, createdAt: row?.created_at }
+}
+
+async function actionAcceptRecommendation(admin: any, userId: string, body: Record<string, unknown>) {
+  const recommendationId = requireString(body.recommendationId, 'recommendation ID', 36, 36)
+  if (!/^([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/iu.test(recommendationId)) {
+    throw Object.assign(new Error('A valid recommendation is required.'), { status: 400, code: 'invalid_request' })
+  }
+  const { data: rec, error: recError } = await admin.from('list_r_recommendations_v2')
+    .select('id,recipient_id,anilist_media_id,status')
+    .eq('id', recommendationId).eq('recipient_id', userId).eq('status', 'pending').maybeSingle()
+  if (recError || !rec) throw Object.assign(new Error('Recommendation is unavailable or already handled.'), { status: 409, code: 'recommendation_unavailable' })
+  const { data: connection, error: connError } = await admin.from(CONNECTIONS)
+    .select('access_token,token_expires_at').eq('user_id', userId).maybeSingle()
+  if (connError || !connection) throw Object.assign(new Error('Connect your AniList account before accepting this recommendation.'), { status: 409, code: 'anilist_not_connected' })
+  if (Date.parse(connection.token_expires_at) <= Date.now()) throw Object.assign(new Error('Your AniList authorization has expired. Reconnect AniList to continue.'), { status: 409, code: 'anilist_reauthorization_required' })
+  await addAniListAnimeToPlanning(connection.access_token, Number(rec.anilist_media_id))
+  const { error: finalizeError } = await admin.rpc('finalize_list_r_recommendation_v2', { p_recommendation_id: recommendationId, p_user_id: userId })
+  if (finalizeError) throw Object.assign(new Error('The anime was added to AniList, but the recommendation could not be finalized. Please retry the recommendation action.'), { status: 503, code: 'recommendation_finalize_failed' })
+  return { state: 'accepted', recommendationId }
+}
+
 export default {
   fetch: withSupabase({ auth: 'user' }, async (request: Request, ctx: any) => {
     const origin = request.headers.get('origin')
