@@ -396,7 +396,7 @@ set search_path = ''
 as $$
 declare v_status text;
 begin
-  if coalesce(auth.role(), '') <> 'service_role' then raise exception 'Server authorization required.' using errcode = '42501'; end if;
+  if current_user <> 'service_role' then raise exception 'Server authorization required.' using errcode = '42501'; end if;
   update public.list_r_recommendations_v2 r set status = 'accepted', acted_at = pg_catalog.now()
     where r.id = p_recommendation_id and r.recipient_id = p_recipient_id and r.status in ('pending','accepted')
     returning r.status into v_status;
