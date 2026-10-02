@@ -8,7 +8,6 @@ import {
   exchangeAniListCode,
   fetchAniListMediaProgress,
   fetchAniListAnimeById,
-  addAniListAnimeToPlanning,
   getAniListViewer,
   hashOAuthState,
 } from './anilist-v2.mjs'
@@ -455,7 +454,6 @@ async function saveRecommendationToListR(admin: any, userId: string, media: any)
 
 async function actionAcceptRecommendation(admin: any, userId: string, body: Record<string, unknown>) {
   const recommendationId = requireString(body.recommendationId, 'recommendation ID', 36, 36)
-  const mode = body.mode === 'anilist' ? 'anilist' : 'listr'
   if (!/^([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/iu.test(recommendationId)) {
     throw Object.assign(new Error('A valid recommendation is required.'), { status: 400, code: 'invalid_request' })
   }
@@ -470,9 +468,6 @@ async function actionAcceptRecommendation(admin: any, userId: string, body: Reco
   if (recommendationError) throw Object.assign(new Error('Could not load this recommendation.'), { status: 503, code: 'recommendation_load_failed' })
   if (!recommendation) throw Object.assign(new Error('This recommendation is unavailable.'), { status: 404, code: 'recommendation_unavailable' })
 
-  // ListR-only acceptance must not depend on AniList being connected or reachable.
-  // The recommendation was server-validated when it was sent, so use the stored
-  // canonical metadata instead of making another AniList request here.
   const storedMetadata = recommendation.anime_metadata
   const media = {
     id: Number(recommendation.anilist_media_id),
@@ -492,61 +487,24 @@ async function actionAcceptRecommendation(admin: any, userId: string, body: Reco
   }
   const listRResult = await saveRecommendationToListR(admin, userId, media)
 
-  if (mode === 'listr') {
-    const { data: finalizedStatus, error: finalizeError } = await admin.rpc(
-      'finalize_list_r_recommendation_v2',
-      { p_recommendation_id: recommendationId, p_recipient_id: userId },
-    )
-    const finalizedValue = Array.isArray(finalizedStatus) ? finalizedStatus[0] : finalizedStatus
-    if (finalizeError || finalizedValue !== 'accepted') {
-      throw Object.assign(new Error('ListR saved the anime, but could not finalize the recommendation. It remains retryable.'), {
-        status: 503, code: 'recommendation_finalize_failed',
-      })
-    }
-    return {
-      state: 'accepted',
-      recommendationId,
-      anilistState: 'unchanged',
-      alreadyInListR: listRResult.alreadyInListR,
-      existingCategory: listRResult.existingCategory,
-    }
-  }
-
-  const { data: connection, error: connectionError } = await admin
-    .from(CONNECTIONS)
-    .select('access_token,token_expires_at')
-    .eq('user_id', userId)
-    .maybeSingle()
-  if (connectionError) throw Object.assign(new Error('Could not load the AniList connection.'), { status: 503, code: 'connection_status_unavailable' })
-  if (!connection) throw Object.assign(new Error('Connect your AniList account before adding this recommendation to AniList.'), { status: 409, code: 'anilist_not_connected' })
-  if (Date.parse(connection.token_expires_at) <= Date.now()) throw Object.assign(new Error('Your AniList authorization has expired. Reconnect AniList to continue.'), { status: 409, code: 'anilist_reauthorization_required' })
-
-  if (media.isLocked) {
-    throw Object.assign(new Error('AniList has locked this anime entry, so it cannot be added to a list.'), { status: 409, code: 'anilist_media_locked' })
-  }
-
-  await addAniListAnimeToPlanning(connection.access_token, Number(recommendation.anilist_media_id))
-
   const { data: finalizedStatus, error: finalizeError } = await admin.rpc(
     'finalize_list_r_recommendation_v2',
     { p_recommendation_id: recommendationId, p_recipient_id: userId },
   )
   const finalizedValue = Array.isArray(finalizedStatus) ? finalizedStatus[0] : finalizedStatus
   if (finalizeError || finalizedValue !== 'accepted') {
-    throw Object.assign(new Error('AniList confirmed the change, but ListR could not finalize the recommendation. It remains retryable.'), {
+    throw Object.assign(new Error('ListR saved the anime, but could not finalize the recommendation. It remains retryable.'), {
       status: 503, code: 'recommendation_finalize_failed',
     })
   }
-
   return {
     state: 'accepted',
     recommendationId,
-    anilistState: 'planning',
+    anilistState: 'unchanged',
     alreadyInListR: listRResult.alreadyInListR,
     existingCategory: listRResult.existingCategory,
   }
 }
-
 export default {
   fetch: withSupabase({ auth: 'user' }, async (request: Request, ctx: any) => {
     const origin = request.headers.get('origin')
