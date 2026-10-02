@@ -9,3 +9,12 @@
 .recommendation-reminder-action{flex:0 0 auto;padding:8px 10px;font-size:10px}
 @keyframes reminder-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
 @media(max-width:430px){.recommendation-reminders{right:13px;bottom:13px;width:calc(100vw - 26px)}.recommendation-reminder{padding:12px;gap:10px}.recommendation-reminder-action{padding:8px;font-size:9px}}
+
+/* Recommendation reminder: keep it in the viewport/top layer, independent of page layout. */
+.recommendation-reminders{position:fixed;inset:auto 24px 24px auto;z-index:2147483647;width:min(360px,calc(100vw - 32px));margin:0;pointer-events:none;overflow:visible;background:transparent;border:0;padding:0}
+.recommendation-reminders:popover-open{display:grid}
+.recommendation-reminder{position:relative;z-index:2147483647;max-width:100%;min-width:0}
+.recommend-result{min-width:0;max-width:100%;overflow:hidden}
+.recommend-result-copy{min-width:0;overflow:hidden}
+.recommend-result .button{box-sizing:border-box;max-width:100%;min-width:58px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media(max-width:430px){.recommendation-reminders{inset:auto 13px 13px auto;width:calc(100vw - 26px)}.recommend-result .button{min-width:0}}
