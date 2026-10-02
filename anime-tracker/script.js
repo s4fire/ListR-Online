@@ -1158,7 +1158,34 @@ async function refreshSocialLists(userId) {
 }
 
 async function initializeSocialForUser(userId, requestedView = activeView) {
+  if (userId === 'pending') userId = null;
   if (!userId) {
+    if (!supabaseClient) {
+      const message = 'Sign in to ListR to use Friends and Recommendations. Your guest library remains separate.';
+      if (requestedView === 'friends') setFriendsMessage(message, 'error');
+      if (requestedView === 'recommendations') setRecommendationsMessage(message, 'error');
+      if (!$('#auth-dialog').open) openAuthDialog('login');
+      return;
+    }
+
+    // The Supabase client restores the persisted session asynchronously. Give that
+    // restore a moment to finish before deciding that the user is logged out.
+    await new Promise((resolve) => window.setTimeout(resolve, 500));
+    if (currentUser?.id) return initializeSocialForUser(currentUser.id, requestedView);
+
+    try {
+      const { data, error } = await supabaseClient.auth.getSession();
+      if (!error && data?.session?.user) {
+        await activateUser(data.session.user);
+        if (currentUser?.id) return initializeSocialForUser(currentUser.id, requestedView);
+      }
+    } catch {
+      // If session restoration fails, the normal signed-out fallback below handles it.
+    }
+
+    await new Promise((resolve) => window.setTimeout(resolve, 350));
+    if (currentUser?.id) return initializeSocialForUser(currentUser.id, requestedView);
+
     const message = 'Sign in to ListR to use Friends and Recommendations. Your guest library remains separate.';
     if (requestedView === 'friends') setFriendsMessage(message, 'error');
     if (requestedView === 'recommendations') setRecommendationsMessage(message, 'error');
@@ -1601,7 +1628,20 @@ $('#username-form').addEventListener('submit', async (event) => {
 });
 $('#close-username').addEventListener('click', () => $('#username-dialog').close());
 $('#edit-username').addEventListener('click', openUsernameDialog);
-$('#add-friend').addEventListener('click', () => { if (!currentUser) { openAuthDialog('login'); return; } if (!socialProfile?.username) { openUsernameDialog(); return; } const input = $('#friend-query'); input.focus(); input.select(); setFriendsMessage('Search for a ListR username to send a friend request.'); });
+$('#add-friend').addEventListener('click', () => {
+  if (!currentUser) {
+    void initializeSocialForUser('pending', 'friends');
+    return;
+  }
+  if (!socialProfile?.username) {
+    void initializeSocialForUser(currentUser.id, 'friends');
+    return;
+  }
+  const input = $('#friend-query');
+  input.focus();
+  input.select();
+  setFriendsMessage('Search for a ListR username to send a friend request.');
+});
 $('#friend-search-form').addEventListener('submit', submitFriendSearch);
 $('#incoming-friends').addEventListener('click', handleSocialListClick);
 $('#friends-list').addEventListener('click', handleSocialListClick);
