@@ -168,11 +168,16 @@ async function actionStart(admin: any, userId: string) {
     console.error('AniList OAuth state write failed', error.code || 'unknown_db_error')
     throw Object.assign(new Error('Could not start AniList authorization.'), { status: 503, code: 'oauth_state_write_failed' })
   }
-  const authorizeUrl = buildAniListAuthorizationUrl({
-    clientId: configValue('ANILIST_CLIENT_ID'),
-    redirectUri: configValue('ANILIST_REDIRECT_URI'),
-    state,
-  })
+  let clientId: string
+  let redirectUri: string
+  try {
+    clientId = configValue('ANILIST_CLIENT_ID')
+    redirectUri = configValue('ANILIST_REDIRECT_URI')
+  } catch (error) {
+    console.error('AniList OAuth configuration check failed', safeCode((error as any)?.code), (error as any)?.status || 503)
+    throw error
+  }
+  const authorizeUrl = buildAniListAuthorizationUrl({ clientId, redirectUri, state })
   return { state: 'connecting', authorizeUrl, expiresAt }
 }
 
@@ -492,7 +497,8 @@ async function actionAcceptRecommendation(admin: any, userId: string, body: Reco
       'finalize_list_r_recommendation_v2',
       { p_recommendation_id: recommendationId, p_recipient_id: userId },
     )
-    if (finalizeError || finalizedStatus !== 'accepted') {
+    const finalizedValue = Array.isArray(finalizedStatus) ? finalizedStatus[0] : finalizedStatus
+    if (finalizeError || finalizedValue !== 'accepted') {
       throw Object.assign(new Error('ListR saved the anime, but could not finalize the recommendation. It remains retryable.'), {
         status: 503, code: 'recommendation_finalize_failed',
       })
@@ -525,7 +531,8 @@ async function actionAcceptRecommendation(admin: any, userId: string, body: Reco
     'finalize_list_r_recommendation_v2',
     { p_recommendation_id: recommendationId, p_recipient_id: userId },
   )
-  if (finalizeError || finalizedStatus !== 'accepted') {
+  const finalizedValue = Array.isArray(finalizedStatus) ? finalizedStatus[0] : finalizedStatus
+  if (finalizeError || finalizedValue !== 'accepted') {
     throw Object.assign(new Error('AniList confirmed the change, but ListR could not finalize the recommendation. It remains retryable.'), {
       status: 503, code: 'recommendation_finalize_failed',
     })
