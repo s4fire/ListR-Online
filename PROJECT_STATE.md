@@ -1,6 +1,6 @@
 # ListR Project State
 
-Last updated: 2026-10-01
+Last updated: 2026-10-02
 
 ## Repository
 - GitHub repository: s4fire/ListR-Online
@@ -46,6 +46,15 @@ Last updated: 2026-10-01
 - Existing guest localStorage key was intentionally preserved as afterglow-anime-tracker-v1 so existing guest libraries are not lost during the rebrand.
 - The repository name remains s4fire/ListR-Online.
 - GitHub Actions Pages workflow run 36916575138 for commit 38b2d6e420f43b6c91b30d22005adb3de34e77b4 completed successfully, including frontend tests and syntax checks.
+
+## Auth startup deadlock checkpoint
+- Investigated the persistent “Checking your saved library…” startup state.
+- Root cause: anime-tracker/script.js was awaiting supabaseClient.auth.getSession() during startup even though Supabase Auth initializes automatically when the client is created. That created a second auth-initialization path and could leave startup waiting indefinitely on auth-js versions using the older initialization/locking path.
+- Fixed initializeAccount() to subscribe to onAuthStateChange() and use the emitted INITIAL_SESSION as the authoritative startup result. Follow-up account activation is deferred with setTimeout so Supabase calls are not made synchronously inside the auth callback.
+- No timeout/fallback was added to mask the problem.
+- Fix commit: e24887c31dc77251dd4f7fec1416a92d2050f32d.
+- Supabase's current documentation recommends relying on the automatic client initialization and onAuthStateChange rather than manually awaiting initialize() for normal browser startup. See the Supabase auth initialization/getSession documentation.
+- This checkpoint should be verified on the production Pages site before further auth changes.
 
 ## Current planned work
 1. Confirm the Supabase Authentication URL Configuration for production.
