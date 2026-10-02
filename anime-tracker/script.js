@@ -60,6 +60,7 @@ const socialLoads = new Map();
 const profileLoads = new Map();
 let profileMenuErrorUserId = null;
 let selectedRecommendationMedia = null;
+let recommendationReminders = new Map();
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -267,6 +268,7 @@ function render() {
   renderCounts();
   renderStats();
   if (['watching', 'completed', 'interested'].includes(activeView)) renderCollection();
+  reconcileRecommendationReminders();
 }
 
 function renderResults() {
@@ -521,6 +523,7 @@ async function activateUser(user) {
   if (currentUser?.id !== userId) { resetAniListPanel(); resetSocialState(); }
   activatingUserId = userId;
   currentUser = { id: userId, email: String(user.email || '') };
+  recommendationReminders = readRecommendationReminders(userId);
   cloudLibraryReady = false;
   entries.clear();
   updateAccountBar();
@@ -1080,7 +1083,7 @@ function setRecommendationsMessage(message, type = '') {
 
 function updateRecommendationBadge() {
   const badge = $('#nav-recommendations');
-  const count = receivedRecommendations.length;
+  const count = receivedRecommendations.filter((recommendation) => !recommendationReminders.has(String(recommendation.recommendation_id))).length;
   badge.textContent = count > 99 ? '99+' : String(count);
   badge.classList.toggle('has-pending', count > 0);
   badge.setAttribute('aria-label', count ? `${count} pending recommendation${count === 1 ? '' : 's'}` : 'No pending recommendations');
@@ -1099,6 +1102,7 @@ function resetSocialState() {
   recommendationTarget = null;
   recommendationSearchResults = [];
   selectedRecommendationMedia = null;
+  recommendationReminders = new Map();
   recommendationSending = false;
   recommendationSearchController?.abort();
   for (const selector of ['#username-dialog', '#friend-profile-dialog', '#recommend-anime-dialog']) {
@@ -1158,10 +1162,106 @@ function renderFriendSearchResults() {
   }).join('');
 }
 
+const RECOMMENDATION_REMINDER_KEY = 'listr-recommendation-reminders-v1';
+
+function readRecommendationReminders(userId) {
+  const result = new Map();
+  if (!userId || !storage) return result;
+  try {
+    const raw = storage.getItem(RECOMMENDATION_REMINDER_KEY + ':' + String(userId));
+    const parsed = raw ? JSON.parse(raw) : [];
+    if (Array.isArray(parsed)) {
+      for (const reminder of parsed) {
+        if (reminder?.recommendationId && reminder?.mediaId) {
+          result.set(String(reminder.recommendationId), {
+            recommendationId: String(reminder.recommendationId),
+            mediaId: String(reminder.mediaId),
+            title: String(reminder.title || 'this anime'),
+          });
+        }
+      }
+    }
+  } catch {}
+  return result;
+}
+
+function writeRecommendationReminders(userId) {
+  if (!userId || !storage) return;
+  try {
+    const value = [...recommendationReminders.values()];
+    if (value.length) storage.setItem(RECOMMENDATION_REMINDER_KEY + ':' + String(userId), JSON.stringify(value));
+    else storage.removeItem(RECOMMENDATION_REMINDER_KEY + ':' + String(userId));
+  } catch {}
+}
+
+function renderRecommendationReminders() {
+  const container = $('#recommendation-reminders');
+  if (!container) return;
+  const reminders = [...recommendationReminders.values()];
+  container.innerHTML = reminders.map((reminder) =>
+    '<article class="recommendation-reminder" data-recommendation-reminder="' + escapeHtml(reminder.recommendationId) + '">' +
+      '<div class="recommendation-reminder-copy">' +
+        '<span class="section-kicker">RECOMMENDED ANIME</span>' +
+        '<strong>' + escapeHtml(reminder.title) + '</strong>' +
+        '<p>Add it to your ListR library to clear this reminder.</p>' +
+      '</div>' +
+      '<button class="button button-primary recommendation-reminder-action" type="button" data-reminder-action="add" data-media-title="' + escapeHtml(reminder.title) + '">Add anime</button>' +
+    '</article>'
+  ).join('');
+}
+
+function reconcileRecommendationReminders() {
+  if (!currentUser || !recommendationReminders.size) {
+    renderRecommendationReminders();
+    return;
+  }
+  let changed = false;
+  for (const [recommendationId, reminder] of recommendationReminders) {
+    if (!entries.has(String(reminder.mediaId))) continue;
+    recommendationReminders.delete(recommendationId);
+    receivedRecommendations = receivedRecommendations.filter((item) => String(item.recommendation_id) !== recommendationId);
+    changed = true;
+    void dismissRecommendationV2(supabaseClient, recommendationId).catch(() => {});
+  }
+  if (changed) {
+    writeRecommendationReminders(currentUser.id);
+    updateRecommendationBadge();
+    if (activeView === 'recommendations') renderRecommendations();
+  }
+  renderRecommendationReminders();
+}
+
+function startRecommendationReminder(recommendation) {
+  const recommendationId = String(recommendation.recommendation_id);
+  const mediaId = String(recommendation.anilist_media_id);
+  const title = getTitle(recommendation.anime_metadata?.title, mediaId);
+  if (entries.has(mediaId)) {
+    void dismissRecommendationV2(supabaseClient, recommendationId).catch(() => {});
+    receivedRecommendations = receivedRecommendations.filter((item) => String(item.recommendation_id) !== recommendationId);
+    updateRecommendationBadge();
+    renderRecommendations();
+    return;
+  }
+  recommendationReminders.set(recommendationId, { recommendationId, mediaId, title });
+  if (currentUser) writeRecommendationReminders(currentUser.id);
+  receivedRecommendations = receivedRecommendations.filter((item) => String(item.recommendation_id) !== recommendationId);
+  renderRecommendations();
+  updateRecommendationBadge();
+  renderRecommendationReminders();
+}
+
+function openRecommendationReminderSearch(title) {
+  $('#add-category').value = 'interested';
+  $('#anime-query').value = title;
+  setView('search');
+  $('#search-form').requestSubmit();
+}
+
 function renderRecommendations() {
   const container = $('#recommendations-list');
-  const hasRecommendations = receivedRecommendations.length > 0;
-  container.innerHTML = receivedRecommendations.map((recommendation) => {
+  const visibleRecommendations = receivedRecommendations.filter((recommendation) => !recommendationReminders.has(String(recommendation.recommendation_id)));
+  const hasRecommendations = visibleRecommendations.length > 0;
+  container.innerHTML = visibleRecommendations.map((recommendation) => {
     const id = String(recommendation.anilist_media_id);
     const localMeta = entries.get(id)?.meta || {};
     const storedMeta = recommendation.anime_metadata || {};
@@ -1180,7 +1280,7 @@ function renderRecommendations() {
     const sent = Number.isFinite(date) ? new Date(date).toLocaleDateString() : 'Recently';
     const sender = recommendation.sender_username ? `@${recommendation.sender_username}` : 'A ListR friend';
     const descriptionMarkup = description ? `<p class="result-desc recommendation-desc">${escapeHtml(description)}</p>` : '';
-    return `<article class="anime-card recommendation-card" data-recommendation-id="${escapeHtml(recommendation.recommendation_id)}"><div class="cover-wrap">${imageMarkup(media, title)}<span class="cover-badge"><i></i>RECOMMENDED</span></div><div class="card-body"><h3 class="card-title" title="${escapeHtml(title)}">${escapeHtml(title)}</h3><p class="card-subtitle">${escapeHtml(format)} · AniList #${escapeHtml(id)}</p>${descriptionMarkup}<p class="recommend-sender">From ${escapeHtml(sender)}</p><p class="recommendation-date">Received ${escapeHtml(sent)}</p><div class="recommend-actions"><button class="button button-primary" type="button" data-recommendation-action="accept" data-id="${escapeHtml(recommendation.recommendation_id)}">Add to ListR</button><button class="button button-quiet" type="button" data-recommendation-action="accept-anilist" data-id="${escapeHtml(recommendation.recommendation_id)}">ListR + AniList</button><button class="button button-quiet" type="button" data-recommendation-action="dismiss" data-id="${escapeHtml(recommendation.recommendation_id)}">Dismiss</button></div></div></article>`;
+    return `<article class="anime-card recommendation-card" data-recommendation-id="${escapeHtml(recommendation.recommendation_id)}"><div class="cover-wrap">${imageMarkup(media, title)}<span class="cover-badge"><i></i>RECOMMENDED</span></div><div class="card-body"><h3 class="card-title" title="${escapeHtml(title)}">${escapeHtml(title)}</h3><p class="card-subtitle">${escapeHtml(format)} · AniList #${escapeHtml(id)}</p>${descriptionMarkup}<p class="recommend-sender">From ${escapeHtml(sender)}</p><p class="recommendation-date">Received ${escapeHtml(sent)}</p><div class="recommend-actions"><button class="button button-primary" type="button" data-recommendation-action="accept" data-id="${escapeHtml(recommendation.recommendation_id)}">Accept</button><button class="button button-quiet" type="button" data-recommendation-action="dismiss" data-id="${escapeHtml(recommendation.recommendation_id)}">Deny</button></div></div></article>`;
   }).join('');
   $('#recommendations-empty').hidden = hasRecommendations || !currentUser;
   if (!hasRecommendations) container.innerHTML = '';
@@ -1233,8 +1333,9 @@ async function refreshRecommendationBadge(userId = currentUser?.id) {
   try {
     const results = await listReceivedRecommendationsV2(supabaseClient);
     if (currentUser?.id !== uid) return;
-    receivedRecommendations = results;
+    receivedRecommendations = results.filter((recommendation) => !recommendationReminders.has(String(recommendation.recommendation_id)));
     updateRecommendationBadge();
+    reconcileRecommendationReminders();
   } catch {
     // Social schema is an optional additive migration; never block the anime tracker.
     if (currentUser?.id === uid) {
@@ -1256,8 +1357,9 @@ async function refreshSocialLists(userId) {
     renderFriendRows();
   }
   if (recommendationResult.status === 'fulfilled') {
-    receivedRecommendations = recommendationResult.value;
+    receivedRecommendations = recommendationResult.value.filter((recommendation) => !recommendationReminders.has(String(recommendation.recommendation_id)));
     updateRecommendationBadge();
+    reconcileRecommendationReminders();
   }
   if (activeView === 'friends') {
     if (friendResult.status === 'fulfilled') setFriendsMessage('Search a username to find someone, or open a friend profile to see stats and send an anime recommendation.');
@@ -1568,74 +1670,12 @@ function applyRecommendationLocally(recommendation, category = 'interested') {
   render();
 }
 
-async function acceptRecommendation(recommendationId, mode = 'listr') {
-  if (!currentUser || !cloudLibraryReady || socialBusy) return;
+function acceptRecommendation(recommendationId) {
+  if (!currentUser || !cloudLibraryReady) return;
   const recommendation = receivedRecommendations.find((item) => String(item.recommendation_id) === String(recommendationId));
   if (!recommendation) return;
-  const uid = currentUser.id;
-  if (mode === 'anilist') {
-    try {
-      const status = await invokeAniListActionV2(supabaseClient, 'status');
-      if (currentUser?.id !== uid) return;
-      if (status.state !== 'connected') {
-        updateAniListState(status.state === 'error' ? 'error' : 'not_connected', {
-          message: status.message || 'Connect AniList before adding this recommendation to AniList.',
-          messageType: 'error',
-        });
-        setRecommendationsMessage('AniList is not connected. You can still add this recommendation to ListR without affecting AniList.', 'error');
-        return;
-      }
-    } catch (error) {
-      setRecommendationsMessage(safeAniListErrorMessageV2(error), 'error');
-      return;
-    }
-  }
-
-  socialBusy = true;
-  const card = $(`[data-recommendation-id="${CSS.escape(String(recommendationId))}"]`);
-  const button = card?.querySelector(`[data-recommendation-action="${mode === 'anilist' ? 'accept-anilist' : 'accept'}"]`);
-  if (button) { button.disabled = true; button.textContent = 'Adding…'; }
-  setRecommendationsMessage(mode === 'anilist'
-    ? 'Saving the anime to ListR and then adding it to AniList Planning…'
-    : 'Saving the anime to your ListR Interested list…');
-  try {
-    const result = await invokeAniListActionV2(supabaseClient, 'accept-recommendation', {
-      recommendationId: String(recommendationId),
-      mode,
-    });
-    if (currentUser?.id !== uid) return;
-    if (!result || result.state !== 'accepted') throw new Error('ListR did not confirm this recommendation. It remains available to retry.');
-    if (!result.alreadyInListR || entries.has(String(recommendation.anilist_media_id))) applyRecommendationLocally(recommendation, 'interested');
-    else {
-      try {
-        const remote = await loadUserEntries(supabaseClient, uid);
-        if (currentUser?.id === uid) {
-          entries.clear();
-          for (const entry of remote) entries.set(String(entry.id), entry);
-          writeCloudCache(storage, uid, remote);
-          render();
-        }
-      } catch { /* the cloud write already succeeded; keep the existing local view */ }
-    }
-    receivedRecommendations = receivedRecommendations.filter((item) => String(item.recommendation_id) !== String(recommendationId));
-    renderRecommendations();
-    updateRecommendationBadge();
-    const existingNote = result.alreadyInListR && result.existingCategory !== 'interested'
-      ? ` Its existing ListR entry was moved from ${categoryName(result.existingCategory || 'the previous category')} to Interested; its watched count and metadata were preserved.`
-      : result.alreadyInListR
-        ? ' It was already in ListR Interested, so no duplicate was created.'
-        : ' It is now in your ListR Interested list.';
-    const planningNote = mode === 'anilist' ? ' It was also added to AniList Planning.' : ' AniList was not changed.';
-    setRecommendationsMessage(`Recommendation accepted.${existingNote}${planningNote}`);
-    showToast(mode === 'anilist' ? 'Recommendation added to ListR and AniList.' : 'Recommendation added to ListR.');
-  } catch (error) {
-    if (currentUser?.id !== uid) return;
-    if (error?.code === 'recommendation_finalize_failed') applyRecommendationLocally(recommendation, 'interested');
-    setRecommendationsMessage(safeAniListErrorMessageV2(error), 'error');
-  } finally {
-    socialBusy = false;
-    if (currentUser?.id === uid) renderRecommendations();
-  }
+  startRecommendationReminder(recommendation);
+  setRecommendationsMessage('Accepted. ListR will keep a reminder in the bottom-right until you add the anime to your list.');
 }
 
 async function dismissRecommendation(recommendationId) {
@@ -1818,9 +1858,13 @@ $('#send-recommendation').addEventListener('click', () => { void sendAnimeRecomm
 $('#recommendations-list').addEventListener('click', (event) => {
   const button = event.target.closest('[data-recommendation-action]');
   if (!button) return;
-  if (button.dataset.recommendationAction === 'accept') void acceptRecommendation(button.dataset.id, 'listr');
-  if (button.dataset.recommendationAction === 'accept-anilist') void acceptRecommendation(button.dataset.id, 'anilist');
+  if (button.dataset.recommendationAction === 'accept') acceptRecommendation(button.dataset.id);
   if (button.dataset.recommendationAction === 'dismiss') void dismissRecommendation(button.dataset.id);
+});
+$('#recommendation-reminders').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-reminder-action="add"]');
+  if (!button) return;
+  openRecommendationReminderSearch(button.dataset.mediaTitle || 'Anime');
 });
 $('#refresh-recommendations').addEventListener('click', () => { if (currentUser) void initializeSocialForUser(currentUser.id, 'recommendations'); });
 window.addEventListener('online', () => {
