@@ -51,3 +51,38 @@
   .auth-dialog{padding:24px 20px}
   .auth-brand{margin-bottom:18px}
 }
+/* AniList OAuth and progress sync v2 */
+.anilist-panel{margin:12px 0 14px;padding:14px 16px;border:1px solid rgba(198,165,255,.18);border-radius:13px;background:linear-gradient(110deg,rgba(35,29,45,.9),rgba(19,18,26,.96))}
+.anilist-heading{display:flex;align-items:center;justify-content:space-between;gap:14px}
+.anilist-identity{min-width:0}
+.anilist-title-row{display:flex;align-items:center;gap:10px;margin-top:3px}
+.anilist-title-row h2{margin:0;font-size:16px;letter-spacing:-.3px}
+.anilist-state{display:inline-flex;align-items:center;min-height:21px;padding:3px 8px;border:1px solid #37313f;border-radius:999px;color:#aaa1b2;background:#15131b;font-size:9px;font-weight:750;letter-spacing:.25px}
+.anilist-state::before{width:6px;height:6px;margin-right:6px;border-radius:50%;background:#817887;content:""}
+.anilist-state.is-connecting{border-color:rgba(228,197,149,.32);color:#e4c595}
+.anilist-state.is-connecting::before{background:#e4c595;animation:anilist-pulse 1.15s ease-in-out infinite}
+.anilist-state.is-connected{border-color:rgba(165,226,195,.3);color:#a5e2c3}
+.anilist-state.is-connected::before{background:#80d8ab}
+.anilist-state.is-error{border-color:rgba(255,158,185,.34);color:#ff9eb9}
+.anilist-state.is-error::before{background:#ff809f}
+.anilist-account-name{max-width:640px;margin:5px 0 0;color:#928a99;font-size:10px;line-height:1.5;overflow-wrap:anywhere}
+.anilist-actions{display:flex;gap:7px;flex-shrink:0}
+.anilist-button{padding:8px 11px;font-size:10px}
+.anilist-sync-message{margin:11px 0 0;color:#a69eae;font-size:10px;line-height:1.5}
+.anilist-sync-message.is-error{color:#ff9eb9}
+.anilist-sync-message.is-success{color:#a5e2c3}
+.anilist-progress{display:flex;align-items:center;gap:9px;margin-top:9px;color:#e4c595;font-size:10px}
+.anilist-progress progress{width:min(120px,24vw);height:5px;accent-color:#c6a5ff}
+.anilist-spinner{width:13px;height:13px;flex:0 0 auto;border:2px solid rgba(228,197,149,.24);border-top-color:#e4c595;border-radius:50%;animation:anilist-spin .75s linear infinite}
+.anilist-last-sync{margin:8px 0 0;color:#756e7d;font-size:9px}
+.anilist-disclosure{margin:9px 0 0;color:#716b79;font-size:9px;line-height:1.5}
+@keyframes anilist-spin{to{transform:rotate(360deg)}}
+@keyframes anilist-pulse{50%{opacity:.45;transform:scale(.78)}}
+@media(max-width:760px){
+  .anilist-panel{padding:12px}
+  .anilist-heading{align-items:flex-start;flex-direction:column;gap:10px}
+  .anilist-actions{width:100%}
+  .anilist-button{flex:1}
+  .anilist-progress{flex-wrap:wrap}
+}
+@media(prefers-reduced-motion:reduce){.anilist-spinner,.anilist-state.is-connecting::before{animation:none}}
