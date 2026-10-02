@@ -23,12 +23,15 @@ Read [`ANILIST_INTEGRATION_v2.md`](ANILIST_INTEGRATION_v2.md) for verified AniLi
 
 Registration now requires a globally unique, case-insensitive username. Friends, username search, aggregate friend stats, and the recipient-only recommendation inbox are backed by the database-enforced profile/friendship/recommendation schema. Friend profiles reveal only usernames; stats are available only to accepted friends and never return anime titles, email, or AniList credentials. Read [`FRIENDS_RECOMMENDATIONS_v2.md`](FRIENDS_RECOMMENDATIONS_v2.md) for migration/deployment steps and the carefully limited recommendation acceptance flow.
 
+Stats, Friends, and Recommendations are grouped in the profile dropdown. The recommendation composer keeps search results in their own scroll area and pins the selected-anime preview and Send action below it. A recommendation shows its sender, received date, and AniList metadata; choosing a result only selects it—the separate Send action creates the recommendation and does not write to AniList.
+
 ## Features
 
 - Watching, Completed, and Interested categories; tracker state and statistics are restored from the authenticated user's cloud rows.
 - User-owned rows keyed by Auth user ID plus AniList media ID; RLS is the actual security boundary, not just JavaScript checks.
 - Persistent Supabase Auth sessions; email/password account forms with validation, clear errors, and verification guidance.
 - Unique ListR usernames and RLS/RPC-enforced friend requests, accepted-friend aggregate stats, and recipient-only anime recommendations.
+- Profile dropdown for Stats, Friends, and Recommendations; the recommendation picker has an independent results scroller and fixed selection/send footer.
 - Non-destructive guest-library import: imports missing AniList IDs only, keeps cloud duplicates unchanged, and leaves the local guest list intact.
 - Per-user recovery cache and retryable sync outbox for transient network/backend failures; caches and queues are namespaced by the authenticated user ID.
 - Logout clears the visible cloud state and returns to the separate local guest list.

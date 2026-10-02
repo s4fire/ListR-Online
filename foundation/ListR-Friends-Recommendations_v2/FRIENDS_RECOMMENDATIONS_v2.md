@@ -30,6 +30,8 @@ The main addition is `supabase/migrations/202610020003_friends_recommendations_v
 
 The static client additions are `anime-tracker/social-v2.js`, `anime-tracker/tests/friends-recommendations-v2.test.mjs`, new required username and social views/dialogs in `index.html`, matching CSS, and Friends/recommendation orchestration in `script.js`. The existing `anilist-account-v2` Edge Function is narrowly extended, and `_shared/anilist-v2.mjs` adds the isolated, testable acceptance coordinator and canonical media/Planning helpers.
 
+The app header keeps Watching, Completed, Interested, and Add anime prominent; Stats, Friends, and Recommendations are grouped in a circular profile dropdown. It closes on outside click, Escape, or section selection. The recommendation composer separates the AniList result scroller from a pinned selected-anime preview and Send footer, so a long result list does not push the action off-screen. Selecting a result is not a send and does not write to AniList.
+
 Run frontend and helper tests with:
 
 ```bash
