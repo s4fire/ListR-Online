@@ -27,7 +27,15 @@ export function validateProgressResponseV2(response) {
       throw new Error('AniList returned invalid or duplicate progress values. No ListR data was changed.');
     }
     seen.add(mediaId);
-    return { mediaId, progress };
+    const media = item?.media;
+    if (!media || Number(media.id) !== mediaId || typeof media !== 'object') {
+      throw new Error('AniList returned incomplete anime metadata. No ListR data was changed.');
+    }
+    const episodes = media.episodes == null ? null : Number(media.episodes);
+    if (episodes != null && (!Number.isSafeInteger(episodes) || episodes < 0 || episodes > 2147483647)) {
+      throw new Error('AniList returned an invalid episode total. No ListR data was changed.');
+    }
+    return { mediaId, progress, media };
   });
 }
 
