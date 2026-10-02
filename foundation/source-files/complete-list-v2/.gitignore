@@ -1,0 +1,10 @@
+# Local secrets and Supabase Edge Function credentials
+.env
+.env.*
+!.env.example
+supabase/functions/.env
+
+# Local development artifacts
+.DS_Store
+Thumbs.db
+.vscode/
