@@ -65,8 +65,7 @@ Last updated: 2026-10-02
 - Implementation commits: e977d9ccc469a95084dce190b969476873e88c0b, ab4fa4d61ff4103f0fd31fdcc286cb7f47c39db3, c7aeb783177849418883d0df115324d4d637a8b3.
 
 ## Recommendation reminder viewport/overflow fix checkpoint
-- Recommendation reminders now use a manual Popover API top-layer container when supported, while retaining a fixed-position fallback. This makes the reminder bottom-right of the viewport rather than dependent on page layout and keeps it above normal page stacking contexts.
-- Recommendation search result rows now constrain their flex children and Select buttons so long titles cannot push the button outside the result border.
+- Recommendation search result rows constrain their flex children and Select buttons so long titles cannot push the button outside the result border.
 
 ## Current planned work
 1. Confirm the Supabase Authentication URL Configuration for production.
