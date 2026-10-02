@@ -139,10 +139,20 @@ export function normalizeAniListProgress(collection) {
       if (!Number.isSafeInteger(progress) || progress < 0 || progress > 2147483647) {
         throw new AniListIntegrationError('anilist_malformed_response', 'AniList returned an invalid episode count. No ListR data was changed.', { status: 502 });
       }
+      const media = entry?.media;
+      const mediaIdFromMedia = Number(media?.id);
+      if (!media || mediaIdFromMedia !== mediaId) {
+        throw new AniListIntegrationError('anilist_malformed_response', 'AniList returned incomplete anime metadata. No ListR data was changed.', { status: 502 });
+      }
+      const episodes = media.episodes == null ? null : Number(media.episodes);
+      if (episodes != null && (!Number.isSafeInteger(episodes) || episodes < 0 || episodes > 2147483647)) {
+        throw new AniListIntegrationError('anilist_malformed_response', 'AniList returned an invalid episode total. No ListR data was changed.', { status: 502 });
+      }
+      const status = typeof media.status === 'string' ? media.status : null;
       const updatedAt = Number.isSafeInteger(Number(entry.updatedAt)) ? Number(entry.updatedAt) : 0;
       const previous = byMediaId.get(mediaId);
       if (!previous || updatedAt > previous.updatedAt || (updatedAt === previous.updatedAt && progress > previous.progress)) {
-        byMediaId.set(mediaId, { mediaId, progress, updatedAt });
+        byMediaId.set(mediaId, { mediaId, progress, updatedAt, media });
       }
     }
   }
@@ -151,14 +161,31 @@ export function normalizeAniListProgress(collection) {
   }
   return [...byMediaId.values()]
     .sort((left, right) => left.mediaId - right.mediaId)
-    .map(({ mediaId, progress }) => ({ mediaId, progress }));
+    .map(({ mediaId, progress, media }) => ({ mediaId, progress, media }));
 }
 
 const MEDIA_LIST_PROGRESS_QUERY = `query ($userId: Int!, $type: MediaType!) {
   MediaListCollection(userId: $userId, type: $type) {
     lists {
       isCustomList
-      entries { mediaId progress updatedAt }
+      entries {
+      mediaId
+      progress
+      updatedAt
+      media {
+        id
+        title { romaji english native userPreferred }
+        coverImage { extraLarge large medium }
+        episodes
+        duration
+        status
+        season
+        seasonYear
+        format
+        description(asHtml: false)
+        siteUrl
+      }
+    }
     }
   }
 }`;
