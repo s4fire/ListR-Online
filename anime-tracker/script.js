@@ -1162,7 +1162,7 @@ function renderRecommendations() {
   const container = $('#recommendations-list');
   const hasRecommendations = receivedRecommendations.length > 0;
   container.innerHTML = receivedRecommendations.map((recommendation) => {
-    const media = recommendation.anime_metadata || {};
+    const id = String(recommendation.anilist_media_id);\n    const localMeta = entries.get(id)?.meta || {};\n    const storedMeta = recommendation.anime_metadata || {};\n    const media = {\n      ...localMeta,\n      ...storedMeta,\n      title: { ...(localMeta.title || {}), ...(storedMeta.title || {}) },\n      coverImage: { ...(localMeta.coverImage || {}), ...(storedMeta.coverImage || {}) },\n    };
     const id = String(recommendation.anilist_media_id);
     const title = getTitle(media.title, id);
     const format = media.format ? String(media.format).replaceAll('_', ' ') : 'Anime';
