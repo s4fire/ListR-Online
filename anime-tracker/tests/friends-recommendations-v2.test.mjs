@@ -247,7 +247,7 @@ test('recommendation server handlers are wired, ListR-first, AniList-second, and
   assert.match(edge, /case 'send-recommendation': result = await actionSendRecommendation\(admin, userId, body\); break/u);
   assert.match(edge, /case 'accept-recommendation': result = await actionAcceptRecommendation\(admin, userId, body\); break/u);
   assert.match(edge, /async function actionSendRecommendation[\\s\\S]*fetchAniListAnimeById\(mediaId\)[\\s\\S]*create_list_r_recommendation_v2/u);
-  assert.match(edge, /async function actionAcceptRecommendation[\\s\\S]*saveRecommendationToListR\(admin, userId, media\)[\\s\\S]*addAniListAnimeToPlanning[\\s\\S]*finalize_list_r_recommendation_v2/u);
+  assert.match(edge, /row\\?\\.recommendation_id[\\s\\S]*recommendationId: row\\.recommendation_id/u);\n  assert.match(edge, /async function actionAcceptRecommendation[\\s\\S]*saveRecommendationToListR\(admin, userId, media\)[\\s\\S]*addAniListAnimeToPlanning[\\s\\S]*finalize_list_r_recommendation_v2/u);
   assert.match(edge, /saveRecommendationToListR[\\s\\S]*from\('anime_records'\)[\\s\\S]*category: 'interested'/u);
   assert.match(edge, /saveRecommendationToListR[\\s\\S]*\.insert\([\\s\\S]*watched_episodes: 0/u);
   assert.match(edge, /finalize_list_r_recommendation_v2[\\s\\S]*p_recommendation_id: recommendationId[\\s\\S]*p_recipient_id: userId/u);
