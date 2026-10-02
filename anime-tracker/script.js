@@ -1162,19 +1162,29 @@ function renderRecommendations() {
   const container = $('#recommendations-list');
   const hasRecommendations = receivedRecommendations.length > 0;
   container.innerHTML = receivedRecommendations.map((recommendation) => {
-    const id = String(recommendation.anilist_media_id);\n    const localMeta = entries.get(id)?.meta || {};\n    const storedMeta = recommendation.anime_metadata || {};\n    const media = {\n      ...localMeta,\n      ...storedMeta,\n      title: { ...(localMeta.title || {}), ...(storedMeta.title || {}) },\n      coverImage: { ...(localMeta.coverImage || {}), ...(storedMeta.coverImage || {}) },\n    };
     const id = String(recommendation.anilist_media_id);
+    const localMeta = entries.get(id)?.meta || {};
+    const storedMeta = recommendation.anime_metadata || {};
+    const media = {
+      ...localMeta,
+      ...storedMeta,
+      title: { ...(localMeta.title || {}), ...(storedMeta.title || {}) },
+      coverImage: { ...(localMeta.coverImage || {}), ...(storedMeta.coverImage || {}) },
+    };
     const title = getTitle(media.title, id);
     const format = media.format ? String(media.format).replaceAll('_', ' ') : 'Anime';
+    const description = media.description
+      ? String(media.description).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+      : '';
     const date = Date.parse(recommendation.created_at);
     const sent = Number.isFinite(date) ? new Date(date).toLocaleDateString() : 'Recently';
     const sender = recommendation.sender_username ? `@${recommendation.sender_username}` : 'A ListR friend';
-    return `<article class="anime-card recommendation-card" data-recommendation-id="${escapeHtml(recommendation.recommendation_id)}"><div class="cover-wrap">${imageMarkup(media, title)}<span class="cover-badge"><i></i>RECOMMENDED</span></div><div class="card-body"><h3 class="card-title" title="${escapeHtml(title)}">${escapeHtml(title)}</h3><p class="card-subtitle">${escapeHtml(format)} · AniList #${escapeHtml(id)}</p><p class="recommend-sender">From ${escapeHtml(sender)}</p><p class="recommendation-date">Received ${escapeHtml(sent)}</p><div class="recommend-actions"><button class="button button-primary" type="button" data-recommendation-action="accept" data-id="${escapeHtml(recommendation.recommendation_id)}">Add to ListR</button><button class="button button-quiet" type="button" data-recommendation-action="accept-anilist" data-id="${escapeHtml(recommendation.recommendation_id)}">ListR + AniList</button><button class="button button-quiet" type="button" data-recommendation-action="dismiss" data-id="${escapeHtml(recommendation.recommendation_id)}">Dismiss</button></div></div></article>`;
+    const descriptionMarkup = description ? `<p class="result-desc recommendation-desc">${escapeHtml(description)}</p>` : '';
+    return `<article class="anime-card recommendation-card" data-recommendation-id="${escapeHtml(recommendation.recommendation_id)}"><div class="cover-wrap">${imageMarkup(media, title)}<span class="cover-badge"><i></i>RECOMMENDED</span></div><div class="card-body"><h3 class="card-title" title="${escapeHtml(title)}">${escapeHtml(title)}</h3><p class="card-subtitle">${escapeHtml(format)} · AniList #${escapeHtml(id)}</p>${descriptionMarkup}<p class="recommend-sender">From ${escapeHtml(sender)}</p><p class="recommendation-date">Received ${escapeHtml(sent)}</p><div class="recommend-actions"><button class="button button-primary" type="button" data-recommendation-action="accept" data-id="${escapeHtml(recommendation.recommendation_id)}">Add to ListR</button><button class="button button-quiet" type="button" data-recommendation-action="accept-anilist" data-id="${escapeHtml(recommendation.recommendation_id)}">ListR + AniList</button><button class="button button-quiet" type="button" data-recommendation-action="dismiss" data-id="${escapeHtml(recommendation.recommendation_id)}">Dismiss</button></div></div></article>`;
   }).join('');
   $('#recommendations-empty').hidden = hasRecommendations || !currentUser;
   if (!hasRecommendations) container.innerHTML = '';
 }
-
 function renderRecommendationSearchResults() {
   const container = $('#recommend-search-results');
   if (!recommendationSearchResults.length) { container.innerHTML = ''; return; }
