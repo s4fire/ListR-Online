@@ -1568,40 +1568,20 @@ function applyRecommendationLocally(recommendation, category = 'interested') {
   render();
 }
 
-async function acceptRecommendation(recommendationId, mode = 'listr') {
+async function acceptRecommendation(recommendationId) {
   if (!currentUser || !cloudLibraryReady || socialBusy) return;
   const recommendation = receivedRecommendations.find((item) => String(item.recommendation_id) === String(recommendationId));
   if (!recommendation) return;
   const uid = currentUser.id;
-  if (mode === 'anilist') {
-    try {
-      const status = await invokeAniListActionV2(supabaseClient, 'status');
-      if (currentUser?.id !== uid) return;
-      if (status.state !== 'connected') {
-        updateAniListState(status.state === 'error' ? 'error' : 'not_connected', {
-          message: status.message || 'Connect AniList before adding this recommendation to AniList.',
-          messageType: 'error',
-        });
-        setRecommendationsMessage('AniList is not connected. You can still add this recommendation to ListR without affecting AniList.', 'error');
-        return;
-      }
-    } catch (error) {
-      setRecommendationsMessage(safeAniListErrorMessageV2(error), 'error');
-      return;
-    }
-  }
 
   socialBusy = true;
-  const card = $(`[data-recommendation-id="${CSS.escape(String(recommendationId))}"]`);
-  const button = card?.querySelector(`[data-recommendation-action="${mode === 'anilist' ? 'accept-anilist' : 'accept'}"]`);
+  const card = $([data-recommendation-id="${CSS.escape(String(recommendationId))}"]);
+  const button = card?.querySelector('[data-recommendation-action="accept"]');
   if (button) { button.disabled = true; button.textContent = 'Adding…'; }
-  setRecommendationsMessage(mode === 'anilist'
-    ? 'Saving the anime to ListR and then adding it to AniList Planning…'
-    : 'Saving the anime to your ListR Interested list…');
+  setRecommendationsMessage('Saving the anime to your ListR Interested list…');
   try {
     const result = await invokeAniListActionV2(supabaseClient, 'accept-recommendation', {
       recommendationId: String(recommendationId),
-      mode,
     });
     if (currentUser?.id !== uid) return;
     if (!result || result.state !== 'accepted') throw new Error('ListR did not confirm this recommendation. It remains available to retry.');
@@ -1615,7 +1595,7 @@ async function acceptRecommendation(recommendationId, mode = 'listr') {
           writeCloudCache(storage, uid, remote);
           render();
         }
-      } catch { /* the cloud write already succeeded; keep the existing local view */ }
+      } catch { /* cloud write already succeeded; keep existing local view */ }
     }
     receivedRecommendations = receivedRecommendations.filter((item) => String(item.recommendation_id) !== String(recommendationId));
     renderRecommendations();
@@ -1625,9 +1605,8 @@ async function acceptRecommendation(recommendationId, mode = 'listr') {
       : result.alreadyInListR
         ? ' It was already in ListR Interested, so no duplicate was created.'
         : ' It is now in your ListR Interested list.';
-    const planningNote = mode === 'anilist' ? ' It was also added to AniList Planning.' : ' AniList was not changed.';
-    setRecommendationsMessage(`Recommendation accepted.${existingNote}${planningNote}`);
-    showToast(mode === 'anilist' ? 'Recommendation added to ListR and AniList.' : 'Recommendation added to ListR.');
+    setRecommendationsMessage(`Recommendation accepted.${existingNote} AniList was not changed.`);
+    showToast('Recommendation added to ListR.');
   } catch (error) {
     if (currentUser?.id !== uid) return;
     if (error?.code === 'recommendation_finalize_failed') applyRecommendationLocally(recommendation, 'interested');
@@ -1637,7 +1616,6 @@ async function acceptRecommendation(recommendationId, mode = 'listr') {
     if (currentUser?.id === uid) renderRecommendations();
   }
 }
-
 async function dismissRecommendation(recommendationId) {
   if (!currentUser || socialBusy) return;
   const uid = currentUser.id;
@@ -1802,8 +1780,7 @@ $('#send-recommendation').addEventListener('click', () => { void sendAnimeRecomm
 $('#recommendations-list').addEventListener('click', (event) => {
   const button = event.target.closest('[data-recommendation-action]');
   if (!button) return;
-  if (button.dataset.recommendationAction === 'accept') void acceptRecommendation(button.dataset.id, 'listr');
-  if (button.dataset.recommendationAction === 'accept-anilist') void acceptRecommendation(button.dataset.id, 'anilist');
+  if (button.dataset.recommendationAction === 'accept') void acceptRecommendation(button.dataset.id);
   if (button.dataset.recommendationAction === 'dismiss') void dismissRecommendation(button.dataset.id);
 });
 $('#refresh-recommendations').addEventListener('click', () => { if (currentUser) void initializeSocialForUser(currentUser.id, 'recommendations'); });
