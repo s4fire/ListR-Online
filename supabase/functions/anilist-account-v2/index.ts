@@ -445,7 +445,7 @@ async function actionAcceptRecommendation(admin: any, userId: string, body: Reco
 
   const { data: recommendation, error: recommendationError } = await admin
     .from('list_r_recommendations_v2')
-    .select('id,recipient_id,anilist_media_id,metadata,status')
+    .select('id,recipient_id,anilist_media_id,anime_metadata,status')
     .eq('id', recommendationId)
     .eq('recipient_id', userId)
     .eq('status', 'pending')
