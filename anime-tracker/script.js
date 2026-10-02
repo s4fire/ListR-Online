@@ -1169,7 +1169,7 @@ function renderRecommendations() {
     const date = Date.parse(recommendation.created_at);
     const sent = Number.isFinite(date) ? new Date(date).toLocaleDateString() : 'Recently';
     const sender = recommendation.sender_username ? `@${recommendation.sender_username}` : 'A ListR friend';
-    return `<article class="anime-card recommendation-card" data-recommendation-id="${escapeHtml(recommendation.recommendation_id)}"><div class="cover-wrap">${imageMarkup(media, title)}<span class="cover-badge"><i></i>RECOMMENDED</span></div><div class="card-body"><h3 class="card-title" title="${escapeHtml(title)}">${escapeHtml(title)}</h3><p class="card-subtitle">${escapeHtml(format)} · AniList #${escapeHtml(id)}</p><p class="recommend-sender">From ${escapeHtml(sender)}</p><p class="recommendation-date">Received ${escapeHtml(sent)}</p><div class="recommend-actions"><button class="button button-primary" type="button" data-recommendation-action="accept" data-id="${escapeHtml(recommendation.recommendation_id)}">Add to Interested</button><button class="button button-quiet" type="button" data-recommendation-action="dismiss" data-id="${escapeHtml(recommendation.recommendation_id)}">Dismiss</button></div></div></article>`;
+    return `<article class="anime-card recommendation-card" data-recommendation-id="${escapeHtml(recommendation.recommendation_id)}"><div class="cover-wrap">${imageMarkup(media, title)}<span class="cover-badge"><i></i>RECOMMENDED</span></div><div class="card-body"><h3 class="card-title" title="${escapeHtml(title)}">${escapeHtml(title)}</h3><p class="card-subtitle">${escapeHtml(format)} · AniList #${escapeHtml(id)}</p><p class="recommend-sender">From ${escapeHtml(sender)}</p><p class="recommendation-date">Received ${escapeHtml(sent)}</p><div class="recommend-actions"><button class="button button-primary" type="button" data-recommendation-action="accept" data-id="${escapeHtml(recommendation.recommendation_id)}">Add to ListR</button><button class="button button-quiet" type="button" data-recommendation-action="accept-anilist" data-id="${escapeHtml(recommendation.recommendation_id)}">ListR + AniList</button><button class="button button-quiet" type="button" data-recommendation-action="dismiss" data-id="${escapeHtml(recommendation.recommendation_id)}">Dismiss</button></div></div></article>`;
   }).join('');
   $('#recommendations-empty').hidden = hasRecommendations || !currentUser;
   if (!hasRecommendations) container.innerHTML = '';
@@ -1792,7 +1792,8 @@ $('#send-recommendation').addEventListener('click', () => { void sendAnimeRecomm
 $('#recommendations-list').addEventListener('click', (event) => {
   const button = event.target.closest('[data-recommendation-action]');
   if (!button) return;
-  if (button.dataset.recommendationAction === 'accept') void acceptRecommendation(button.dataset.id);
+  if (button.dataset.recommendationAction === 'accept') void acceptRecommendation(button.dataset.id, 'listr');
+  if (button.dataset.recommendationAction === 'accept-anilist') void acceptRecommendation(button.dataset.id, 'anilist');
   if (button.dataset.recommendationAction === 'dismiss') void dismissRecommendation(button.dataset.id);
 });
 $('#refresh-recommendations').addEventListener('click', () => { if (currentUser) void initializeSocialForUser(currentUser.id, 'recommendations'); });
