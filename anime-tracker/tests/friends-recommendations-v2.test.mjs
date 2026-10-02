@@ -256,3 +256,20 @@ test('only the received-recommendation acceptance handler can write AniList; nor
   assert.match(migration, /grant execute on function public\.finalize_list_r_recommendation_v2[\s\S]*to service_role/u);
   assert.doesNotMatch(migration, /grant execute on function public\.finalize_list_r_recommendation_v2[^;]*to authenticated/u);
 });
+
+
+test('profile dropdown closes outside and recommendation composer selects before explicit send', async () => {
+  const app = await readFile(new URL('../script.js', import.meta.url), 'utf8');
+  const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
+  const css = await readFile(new URL('../account.css', import.meta.url), 'utf8');
+  assert.match(html, /id="profile-menu-toggle"[^>]*aria-expanded="false"[^>]*aria-controls="profile-dropdown"/u);
+  for (const view of ['stats', 'friends', 'recommendations']) assert.match(html, new RegExp(`class="profile-dropdown-link"[^>]*data-view="${view}"`, 'u'));
+  assert.match(app, /document\.addEventListener\('click',[\s\S]*?setProfileMenuOpen\(false\)/u);
+  assert.match(app, /document\.addEventListener\('keydown',[\s\S]*?event\.key === 'Escape'[\s\S]*?setProfileMenuOpen\(false/u);
+  assert.match(html, /id="recommend-search-results" class="recommend-results"/u);
+  assert.equal((html.match(/id="send-recommendation"/gu) || []).length, 1);
+  assert.match(app, /data-recommendation-search-action="select"/u);
+  assert.ok(app.includes("$('#send-recommendation').addEventListener('click', () => { void sendAnimeRecommendation(); });"));
+  assert.match(app, /async function sendAnimeRecommendation\(\)[\s\S]*?const media = selectedRecommendationMedia/u);
+  assert.match(css, /\.recommend-dialog \.recommend-results\{[^}]*overflow-y:auto/u);
+});
