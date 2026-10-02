@@ -86,3 +86,59 @@
   .anilist-progress{flex-wrap:wrap}
 }
 @media(prefers-reduced-motion:reduce){.anilist-spinner,.anilist-state.is-connecting::before{animation:none}}
+
+/* Friends, profiles, and recommendations v2 */
+.social-view{padding-bottom:30px}
+.social-toolbar{display:flex;justify-content:flex-end;gap:8px;margin:0 0 14px}
+.social-search-panel{margin:4px 0 0}
+.social-columns{display:grid;grid-template-columns:1fr 1fr;gap:15px;margin:12px 0}
+.social-panel{min-width:0;padding:18px;border:1px solid rgba(255,255,255,.075);border-radius:15px;background:linear-gradient(145deg,#17151e,#13121a)}
+.social-panel .panel-heading{margin-bottom:12px}
+.social-panel .panel-heading h2{font-size:17px}
+.social-list{display:grid;gap:8px}
+.social-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 12px;border:1px solid rgba(255,255,255,.06);border-radius:10px;background:rgba(255,255,255,.018)}
+.social-person{min-width:0}
+.social-person strong{display:block;color:#eee5f5;font-size:12px;overflow-wrap:anywhere}
+.social-person small{display:block;margin-top:3px;color:#877f90;font-size:9px}
+.social-actions{display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:wrap}
+.social-actions .button,.profile-actions .button{padding:7px 10px;font-size:10px}
+.social-empty{padding:16px 10px;color:#817a89;font-size:11px;text-align:center;border:1px dashed #36303e;border-radius:9px}
+.search-results-panel{margin-top:12px}
+.social-message-error{color:#ff9eb9!important}
+.nav-count.has-pending{color:#241832;background:#c6a5ff;box-shadow:0 0 13px #c6a5ff55}
+.social-dialog{max-width:min(520px,calc(100vw - 28px))}
+.username-help{margin:-6px 0 13px}
+.social-dialog .auth-intro{line-height:1.65}
+.profile-actions{display:flex;gap:7px;flex-wrap:wrap;margin:14px 0}
+.friend-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:14px 0;padding:12px;border:1px solid #332d3b;border-radius:11px;background:#14121a}
+.friend-stat{padding:9px;border-radius:8px;background:#201c29}
+.friend-stat strong{display:block;color:#f4eefa;font-size:18px}
+.friend-stat span{display:block;color:#8e8696;font-size:9px;line-height:1.4}
+.friend-stat-wide{grid-column:span 3}
+.recommend-dialog{width:min(600px,calc(100vw - 28px))}
+.recommend-search{display:flex;gap:8px}
+.recommend-search .search-input{flex:1}
+.recommend-results{display:grid;gap:8px;max-height:48vh;overflow:auto;padding-right:3px}
+.recommend-result{display:flex;align-items:center;gap:11px;padding:9px;border:1px solid rgba(255,255,255,.07);border-radius:10px;background:#17151e}
+.recommend-result img{width:45px;height:62px;object-fit:cover;border-radius:6px;background:#292333}
+.recommend-result-copy{flex:1;min-width:0}
+.recommend-result-copy strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px}
+.recommend-result-copy small{display:block;margin-top:3px;color:#888191;font-size:9px}
+.recommendation-card .cover-wrap{height:205px}
+.recommendation-card .recommend-sender{min-height:28px;color:#a69cad;font-size:10px}
+.recommendation-card .recommend-actions{display:flex;gap:7px;margin-top:12px}
+.recommendation-card .recommend-actions .button{flex:1;padding:9px 7px;font-size:10px}
+.recommendation-date{font-size:9px;color:#81798a;margin:0 0 8px}
+@media(max-width:760px){
+ .social-columns{grid-template-columns:1fr}
+ .social-toolbar{justify-content:stretch}
+ .social-toolbar .button{flex:1}
+ .social-panel{padding:13px}
+ .social-row{align-items:flex-start;flex-direction:column}
+ .social-actions{justify-content:flex-start;width:100%}
+ .friend-stat{padding:7px}
+ .friend-stat strong{font-size:15px}
+ .recommendation-card .cover-wrap{height:165px}
+ .recommend-result{align-items:flex-start;flex-wrap:wrap}
+ .recommend-result .button{width:100%}
+}
