@@ -102,7 +102,16 @@ async function authenticatedGraphql(accessToken, query, variables, fetchImpl) {
   }
   const payload = await readJson(response, 'anilist_unavailable');
   if (!response.ok || (Array.isArray(payload?.errors) && payload.errors.length)) {
-    throw new AniListIntegrationError('anilist_query_failed', 'AniList could not return account data. Try again later.', { status: 502 });
+    const providerMessage = Array.isArray(payload?.errors)
+      ? payload.errors.map((item) => typeof item?.message === 'string' ? item.message.trim() : '').filter(Boolean).join(' | ').slice(0, 240)
+      : '';
+    const message = providerMessage || 'AniList could not complete the authenticated request. Try again later.';
+    const isWriteFailure = query.includes('SaveMediaListEntry');
+    throw new AniListIntegrationError(
+      isWriteFailure ? 'recommendation_anilist_write_failed' : 'anilist_query_failed',
+      isWriteFailure ? `AniList rejected the list change: ${message}` : message,
+      { status: isWriteFailure ? 409 : 502 },
+    );
   }
   if (!payload?.data) throw new AniListIntegrationError('anilist_malformed_response', 'AniList returned an incomplete account response. No ListR data was changed.', { status: 502 });
   return payload.data;
@@ -134,6 +143,7 @@ const RECOMMENDATION_MEDIA_QUERY = `query ($id: Int!) {
     id
     type
     isAdult
+    isLocked
     title { romaji english native userPreferred }
     coverImage { extraLarge large medium }
     episodes
