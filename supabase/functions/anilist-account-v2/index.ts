@@ -314,7 +314,7 @@ async function actionSendRecommendation(admin: any, userId: string, body: Record
   }
 
   const row = Array.isArray(data) ? data[0] : data
-  if (!row?.id || Number(row.id) <= 0) {
+  if (!row?.recommendation_id) {
     throw Object.assign(new Error('ListR did not confirm the recommendation was saved.'), {
       status: 503,
       code: 'recommendation_create_failed',
@@ -323,7 +323,7 @@ async function actionSendRecommendation(admin: any, userId: string, body: Record
 
   return {
     state: 'sent',
-    recommendationId: row.id,
+    recommendationId: row.recommendation_id,
     createdAt: row.created_at,
   }
 }
