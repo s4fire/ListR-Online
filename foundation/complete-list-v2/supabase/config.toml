@@ -1,4 +1,0 @@
-project_id = "listr-online"
-
-[functions.anilist-account-v2]
-verify_jwt = true
