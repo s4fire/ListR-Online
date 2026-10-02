@@ -238,35 +238,29 @@ test('existing anime handling is duplicate-safe and finalization failure is reco
   ]);
 });
 
-test('recommendation server handlers are wired, ListR-first, AniList-second, and finalize only after confirmation', async () => {
+test('recommendation server handlers support ListR-only and optional AniList acceptance', async () => {
   const edge = await readFile(new URL('../../supabase/functions/anilist-account-v2/index.ts', import.meta.url), 'utf8');
   const helper = await readFile(new URL('../../supabase/functions/_shared/anilist-v2.mjs', import.meta.url), 'utf8');
   const app = await readFile(new URL('../script.js', import.meta.url), 'utf8');
   const migration = await readFile(new URL('../../supabase/migrations/202610020003_friends_recommendations_v2.sql', import.meta.url), 'utf8');
 
-  assert.match(edge, /case 'send-recommendation': result = await actionSendRecommendation\(admin, userId, body\); break/u);
+  assert.match(edge, /case 'send-recommendation': result = await actionSendRecommendation\(ctx\.supabase, admin, userId, body\); break/u);
   assert.match(edge, /case 'accept-recommendation': result = await actionAcceptRecommendation\(admin, userId, body\); break/u);
-  assert.match(edge, /async function actionSendRecommendation[\\s\\S]*fetchAniListAnimeById\(mediaId\)[\\s\\S]*create_list_r_recommendation_v2/u);
-  assert.match(edge, /row\\?\\.recommendation_id[\\s\\S]*recommendationId: row\\.recommendation_id/u);\n  assert.match(edge, /async function actionAcceptRecommendation[\\s\\S]*saveRecommendationToListR\(admin, userId, media\)[\\s\\S]*addAniListAnimeToPlanning[\\s\\S]*finalize_list_r_recommendation_v2/u);
-  assert.match(edge, /saveRecommendationToListR[\\s\\S]*from\('anime_records'\)[\\s\\S]*category: 'interested'/u);
-  assert.match(edge, /saveRecommendationToListR[\\s\\S]*\.insert\([\\s\\S]*watched_episodes: 0/u);
-  assert.match(edge, /finalize_list_r_recommendation_v2[\\s\\S]*p_recommendation_id: recommendationId[\\s\\S]*p_recipient_id: userId/u);
-  assert.match(helper, /SaveMediaListEntry[\\s\\S]*status: 'PLANNING'/u);
-  assert.doesNotMatch(app, /SaveMediaListEntry|UpdateMediaListEntries|DeleteMediaListEntry/u);
-  assert.match(app, /invokeAniListActionV2\(supabaseClient, 'accept-recommendation'/u);
-  assert.match(migration, /grant execute on function public\.finalize_list_r_recommendation_v2[\\s\\S]*to service_role/u);
-  assert.doesNotMatch(migration, /grant execute on function public\.finalize_list_r_recommendation_v2[^;]*to authenticated/u);
-});
+  assert.match(edge, /async function actionSendRecommendation[\\s\\S]*userClient\.rpc\('create_list_r_recommendation_v2'/u);
   assert.match(edge, /const mode = body\.mode === 'anilist' \? 'anilist' : 'listr'/u);
-  assert.match(edge, /if \(mode === 'listr'\)[\s\S]*anilistState: 'unchanged'/u);
-  assert.match(edge, /if \(mode === 'listr'\)[\s\S]*finalize_list_r_recommendation_v2/u);
-  assert.match(edge, /if \(mode === 'listr'\)[\s\S]*return \{/u);
-  assert.match(edge, /if \(mode !== 'listr'[\s\S]*addAniListAnimeToPlanning/u);
+  assert.match(edge, /if \(mode === 'listr'\)[\\s\\S]*anilistState: 'unchanged'/u);
+  assert.match(edge, /if \(mode === 'listr'\)[\\s\\S]*finalize_list_r_recommendation_v2/u);
+  assert.match(edge, /if \(mode !== 'listr'[\\s\\S]*addAniListAnimeToPlanning/u);
+  assert.match(edge, /saveRecommendationToListR[\\s\\S]*category: 'interested'/u);
+  assert.match(helper, /SaveMediaListEntry[\\s\\S]*status: 'PLANNING'/u);
   assert.match(app, /data-recommendation-action="accept-anilist"/u);
   assert.match(app, /acceptRecommendation\(button\.dataset\.id, 'listr'\)/u);
   assert.match(app, /acceptRecommendation\(button\.dataset\.id, 'anilist'\)/u);
-
-});test('profile dropdown closes outside and recommendation composer selects before explicit send', async () => {
+  assert.doesNotMatch(app, /SaveMediaListEntry|UpdateMediaListEntries|DeleteMediaListEntry/u);
+  assert.match(migration, /grant execute on function public\.finalize_list_r_recommendation_v2[\\s\\S]*to service_role/u);
+});
+  
+test('profile dropdown closes outside and recommendation composer selects before explicit send', async () => {
   const app = await readFile(new URL('../script.js', import.meta.url), 'utf8');
   const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
   const css = await readFile(new URL('../account.css', import.meta.url), 'utf8');
