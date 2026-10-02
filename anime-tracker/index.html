@@ -26,12 +26,26 @@
       <nav class="primary-nav" aria-label="Main navigation">
         <button class="nav-link is-active" type="button" data-view="watching">Watching <span class="nav-count" id="nav-watching">0</span></button>
         <button class="nav-link" type="button" data-view="completed">Completed <span class="nav-count" id="nav-completed">0</span></button>
-        <button class="nav-link" type="button" data-view="friends">Friends</button>
-        <button class="nav-link" type="button" data-view="stats">Stats</button>
-        <button class="nav-link" type="button" data-view="recommendations">Recommendations <span class="nav-count" id="nav-recommendations">0</span></button>
         <button class="nav-link" type="button" data-view="interested">Interested <span class="nav-count" id="nav-interested">0</span></button>
       </nav>
       <button class="button button-primary top-add" id="open-search" type="button"><span aria-hidden="true">＋</span> Add anime</button>
+      <div class="profile-menu-wrap" id="profile-menu">
+        <button class="profile-toggle" id="profile-menu-toggle" type="button" aria-label="Open profile menu" aria-expanded="false" aria-controls="profile-dropdown" title="Profile menu">
+          <svg class="profile-toggle-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"></circle><path d="M4.5 20a7.5 7.5 0 0 1 15 0"></path></svg>
+          <svg class="profile-toggle-chevron" viewBox="0 0 12 8" aria-hidden="true"><path d="m1 1 5 5 5-5"></path></svg>
+        </button>
+        <div class="profile-dropdown" id="profile-dropdown" hidden>
+          <div class="profile-dropdown-identity">
+            <span class="profile-dropdown-caption">YOUR LISTR PROFILE</span>
+            <strong id="profile-menu-username">Guest library</strong>
+          </div>
+          <div class="profile-dropdown-links" aria-label="Profile navigation">
+            <button class="profile-dropdown-link" type="button" data-view="stats">Stats</button>
+            <button class="profile-dropdown-link" type="button" data-view="friends">Friends</button>
+            <button class="profile-dropdown-link" type="button" data-view="recommendations">Recommendations <span class="nav-count" id="nav-recommendations" hidden></span></button>
+          </div>
+        </div>
+      </div>
     </header>
 
     <section class="account-bar" aria-label="Account and cloud sync status">
@@ -202,7 +216,10 @@
     <button class="dialog-close" id="close-recommend-anime" type="button" aria-label="Close recommendation search">×</button>
     <p class="eyebrow auth-eyebrow">PASS A STORY ALONG</p><h2 id="recommend-anime-title">Recommend an anime.</h2><p id="recommend-recipient" class="auth-intro"></p>
     <form id="recommend-search-form" class="recommend-search"><label class="field-with-icon search-input"><span aria-hidden="true">⌕</span><input id="recommend-query" type="search" placeholder="Search AniList…" minlength="2" autocomplete="off" aria-label="Search anime to recommend" required></label><button class="button button-primary" type="submit">Search</button></form>
-    <p id="recommend-search-message" class="message" role="status" aria-live="polite">Choose an anime from the AniList search results.</p><div id="recommend-search-results" class="recommend-results"></div>
+    <p id="recommend-search-message" class="message recommend-search-message" role="status" aria-live="polite">Choose an anime from the AniList search results.</p>
+    <div id="recommend-search-results" class="recommend-results" aria-label="AniList search results" aria-live="polite"></div>
+    <div id="recommend-selected" class="recommend-selected" aria-live="polite"><span class="recommend-selection-empty">Select an anime to preview it here.</span></div>
+    <div class="recommend-footer"><p id="recommend-selection-hint">Choose a result to enable sending.</p><button id="send-recommendation" class="button button-primary" type="button" disabled>Send Recommendation</button></div>
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
