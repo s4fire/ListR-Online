@@ -689,8 +689,8 @@ async function runAniListSync(userId, { automatic = false } = {}) {
   anilistSyncing = true;
   $('#anilist-progress-label').textContent = readOutbox(storage, uid).length
     ? 'Saving queued ListR changes before AniList sync…'
-    : (automatic ? 'Refreshing AniList progress after the sync interval…' : 'Fetching your AniList anime progress…');
-  setAniListMessage('Syncing with AniList… your existing ListR anime will be checked; no new records will be created.');
+    : (automatic ? 'Refreshing AniList library after the sync interval…' : 'Importing your AniList anime library…');
+  setAniListMessage('Syncing with AniList… importing your anime and calculating ListR categories from episode progress.');
   renderAniListPanel();
 
   try {
@@ -708,28 +708,57 @@ async function runAniListSync(userId, { automatic = false } = {}) {
     const fetched = await invokeAniListActionV2(supabaseClient, 'sync');
     const progress = validateProgressResponseV2(fetched);
     if (currentUser?.id !== uid) return false;
-    $('#anilist-progress-label').textContent = `Applying progress to existing ListR anime (${progress.length} AniList entries checked)…`;
-    setAniListMessage(`Found ${progress.length.toLocaleString()} AniList entries. Updating only matching anime already in your ListR library…`);
 
-    const { data, error } = await supabaseClient.rpc('sync_anilist_progress_v2', { p_progress: progress });
-    if (error) {
-      const saveError = new Error('AniList was read, but ListR could not save the progress. Apply the v2 database migration and try again.');
-      saveError.code = 'sync_database_failed';
-      throw saveError;
+    const categoryFor = (item) => {
+      const watched = Number(item.progress);
+      const total = Number(item.media?.episodes);
+      if (watched <= 0) return 'interested';
+      if (String(item.media?.status || '') === 'RELEASING') return 'watching';
+      if (Number.isSafeInteger(total) && total > 0 && watched >= total) return 'completed';
+      return 'watching';
+    };
+
+    $('#anilist-progress-label').textContent = `Importing ${progress.length.toLocaleString()} AniList entries into ListR…`;
+    setAniListMessage(`Found ${progress.length.toLocaleString()} AniList anime. Matching existing entries and importing new ones…`);
+
+    let importedCount = 0;
+    let changedCount = 0;
+    const changedEntries = [];
+
+    for (const item of progress) {
+      const id = String(item.mediaId);
+      const category = categoryFor(item);
+      const prior = entries.get(id);
+      const next = createEntry(item.media, category, prior);
+      next.watched = clampWatched(item.progress, item.media?.episodes);
+      if (prior) next.addedAt = prior.addedAt;
+
+      const changed = !prior
+        || prior.category !== next.category
+        || Number(prior.watched) !== Number(next.watched)
+        || JSON.stringify(prior.meta) !== JSON.stringify(next.meta);
+
+      if (!changed) continue;
+      entries.set(id, next);
+      changedEntries.push(next);
+      changedCount += 1;
+      if (!prior) importedCount += 1;
     }
+
     if (currentUser?.id !== uid) return false;
-    const counts = Array.isArray(data) ? data[0] : data;
-    const matchedCount = Number(counts?.matched_count);
-    const updatedCount = Number(counts?.updated_count);
-    if (!Number.isSafeInteger(matchedCount) || matchedCount < 0 || !Number.isSafeInteger(updatedCount) || updatedCount < 0) {
-      throw new Error('ListR returned an invalid sync result. The cloud update may need to be checked before retrying.');
-    }
-
-    const progressById = new Map(progress.map((item) => [String(item.mediaId), item.progress]));
-    for (const entry of entries.values()) {
-      if (progressById.has(String(entry.id))) entry.watched = clampWatched(progressById.get(String(entry.id)), entry.meta?.episodes);
-    }
     persist();
+    for (const entry of changedEntries) {
+      queueCloudChange({ type: 'upsert', mediaId: entry.id, entry });
+    }
+    if (changedEntries.length) {
+      await flushCloudQueue(uid);
+      if (currentUser?.id !== uid) return false;
+      if (readOutbox(storage, uid).length) {
+        const saveError = new Error('AniList was read, but some imported anime are still waiting to reach your ListR cloud library.');
+        saveError.code = 'sync_database_failed';
+        throw saveError;
+      }
+    }
     render();
 
     let completionRecorded = true;
@@ -743,10 +772,16 @@ async function runAniListSync(userId, { automatic = false } = {}) {
 
     if (currentUser?.id !== uid) return false;
     anilistStatusUserId = uid;
-    if (updatedCount > 0) {
-      setAniListMessage(`Updated watched progress for ${updatedCount.toLocaleString()} existing anime${completionRecorded ? '.' : '; the progress is saved, but its sync time could not be recorded.'}`, completionRecorded ? 'success' : 'error');
+    if (changedCount > 0) {
+      setAniListMessage(
+        `AniList sync complete: imported ${importedCount.toLocaleString()} new anime and updated ${(changedCount - importedCount).toLocaleString()} existing anime${completionRecorded ? '.' : '; the changes are saved, but its sync time could not be recorded.'}`,
+        completionRecorded ? 'success' : 'error'
+      );
     } else {
-      setAniListMessage(`Nothing changed. ${matchedCount.toLocaleString()} existing ListR anime matched AniList progress; no new records were created.${completionRecorded ? '' : ' Sync time could not be recorded.'}`, completionRecorded ? 'success' : 'error');
+      setAniListMessage(
+        `AniList sync complete. Nothing changed — your ListR library already matches AniList progress.${completionRecorded ? '' : ' Sync time could not be recorded.'}`,
+        completionRecorded ? 'success' : 'error'
+      );
     }
     if (!completionRecorded) anilistLastSyncedAt = null;
     updateAniListState('connected', { lastSyncedAt: anilistLastSyncedAt, username: anilistUsername });
