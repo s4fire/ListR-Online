@@ -294,10 +294,19 @@ async function actionSendRecommendation(userClient: any, admin: any, userId: str
   // Re-fetch canonical metadata server-side so clients cannot forge recommendation data.
   const media = await fetchAniListAnimeById(mediaId)
   const metadata = {
-    type: 'ANIME',
     id: Number(media.id),
+    type: 'ANIME',
     isAdult: Boolean(media.isAdult),
     title: media.title,
+    coverImage: media.coverImage,
+    episodes: media.episodes,
+    duration: media.duration,
+    status: media.status,
+    season: media.season,
+    seasonYear: media.seasonYear,
+    format: media.format,
+    description: media.description,
+    siteUrl: media.siteUrl,
   }
 
   const { data, error } = await userClient.rpc('create_list_r_recommendation_v2', {
@@ -436,7 +445,7 @@ async function actionAcceptRecommendation(admin: any, userId: string, body: Reco
 
   const { data: recommendation, error: recommendationError } = await admin
     .from('list_r_recommendations_v2')
-    .select('id,recipient_id,anilist_media_id,status')
+    .select('id,recipient_id,anilist_media_id,metadata,status')
     .eq('id', recommendationId)
     .eq('recipient_id', userId)
     .eq('status', 'pending')
@@ -444,7 +453,25 @@ async function actionAcceptRecommendation(admin: any, userId: string, body: Reco
   if (recommendationError) throw Object.assign(new Error('Could not load this recommendation.'), { status: 503, code: 'recommendation_load_failed' })
   if (!recommendation) throw Object.assign(new Error('This recommendation is unavailable.'), { status: 404, code: 'recommendation_unavailable' })
 
-  const media = await fetchAniListAnimeById(Number(recommendation.anilist_media_id))
+  // ListR-only acceptance must not depend on AniList being connected or reachable.
+  // The recommendation was server-validated when it was sent, so use the stored
+  // canonical metadata instead of making another AniList request here.
+  const storedMetadata = recommendation.metadata
+  const media = {
+    id: Number(recommendation.anilist_media_id),
+    type: 'ANIME',
+    isAdult: Boolean(storedMetadata?.isAdult),
+    title: storedMetadata?.title,
+    coverImage: storedMetadata?.coverImage ?? null,
+    episodes: storedMetadata?.episodes ?? null,
+    duration: storedMetadata?.duration ?? null,
+    status: storedMetadata?.status ?? null,
+    season: storedMetadata?.season ?? null,
+    seasonYear: storedMetadata?.seasonYear ?? null,
+    format: storedMetadata?.format ?? null,
+    description: storedMetadata?.description ?? null,
+    siteUrl: storedMetadata?.siteUrl ?? null,
+  }
   const listRResult = await saveRecommendationToListR(admin, userId, media)
 
   if (mode === 'listr') {
