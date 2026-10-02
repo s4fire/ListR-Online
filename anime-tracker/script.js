@@ -1641,7 +1641,12 @@ async function refreshCurrentSocialPage() {
 async function initializeAccount() {
   if (!supabaseClient) { enterGuest('Supabase could not be loaded. Guest mode is available; sign-in needs the account service.'); return; }
   try {
-    const { data, error } = await supabaseClient.auth.getSession();
+    // Supabase session restoration should never leave the whole app behind the loading screen.
+    const sessionResult = await Promise.race([
+      supabaseClient.auth.getSession(),
+      new Promise((_, reject) => window.setTimeout(() => reject(new Error('Cloud session restore timed out.')), 10000))
+    ]);
+    const { data, error } = sessionResult;
     if (error) throw error;
     supabaseClient.auth.onAuthStateChange((event, session) => {
       window.setTimeout(() => {
