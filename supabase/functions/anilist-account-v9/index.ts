@@ -11,7 +11,7 @@ import {
   addAniListAnimeToPlanning,
   getAniListViewer,
   hashOAuthState,
-} from '../_shared/anilist-v2.mjs'
+} from './anilist-v2.mjs'
 
 const CONNECTIONS = 'anilist_connections_v2'
 const OAUTH_STATES = 'anilist_oauth_states_v2'
