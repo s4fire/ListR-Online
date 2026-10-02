@@ -1,6 +1,6 @@
 # ListR Project State
 
-Last updated: 2026-10-01
+Last updated: 2026-10-02
 
 ## Repository
 - GitHub repository: s4fire/ListR-Online
@@ -48,10 +48,22 @@ Last updated: 2026-10-01
 - GitHub Actions Pages workflow run 36916575138 for commit 38b2d6e420f43b6c91b30d22005adb3de34e77b4 completed successfully, including frontend tests and syntax checks.
 
 ## Current planned work
-1. Confirm the Supabase Authentication URL Configuration for production.
-2. Manually verify the production auth flow with a newly generated confirmation email.
-3. Once auth/rebrand is fully verified, move to Text to List.
-4. Preserve all existing tracker, guest, auth, cloud-sync, AniList, and RLS behavior while adding new features.
+1. Keep GitHub as the source of truth for frontend and Supabase Edge Function source.
+2. Manually verify the production auth flow and AniList OAuth flow after each integration change.
+3. Before adding major new integrations, audit request/response/database contracts end-to-end.
+4. Preserve existing tracker, guest, auth, cloud-sync, AniList, Friends, Recommendations, and RLS behavior.
+
+## Integration contract audit checkpoint
+- Audited the active frontend AniList/Supabase/Friends/Recommendations request values against their receiving Edge Function/RPC/database names.
+- AniList frontend invokes the single production function name: `anilist-account-v9`.
+- AniList action payloads use `action`, `code`, `state`, `recipientId`, `mediaId`, `recommendationId`, and `mode`, and the production Edge Function reads those same fields.
+- Friends RPC argument names match the SQL function parameters, including username, target user ID, friendship ID, acceptance boolean, friend user ID, recommendation ID/action, and recommendation creation metadata.
+- Friend/recommendation return fields consumed by the frontend match the SQL return columns.
+- AniList Edge Function configuration diagnostics now identify which server-side configuration value is missing without revealing its value.
+- AniList recommendation finalization now accepts both scalar and one-row RPC return shapes.
+- `supabase/functions/anilist-account-v2/index.ts` is marked legacy/inactive; `anilist-account-v9` is the production source.
+- The production v9 Edge Function source is present in GitHub so deployed behavior has a canonical repository source.
+- Text to List remains intentionally paused; `text-import.js` is retained only as source/history and `text-list.js` is inactive.
 
 ## Text to List requirements (future feature)
 - Input can contain standalone anime names, in which case the user chooses the category and normal defaults apply:
