@@ -307,6 +307,7 @@ async function actionSendRecommendation(userClient: any, admin: any, userId: str
     format: media.format,
     description: media.description,
     siteUrl: media.siteUrl,
+    isLocked: Boolean(media.isLocked),
   }
 
   const { data, error } = await userClient.rpc('create_list_r_recommendation_v2', {
@@ -353,6 +354,7 @@ async function saveRecommendationToListR(admin: any, userId: string, media: any)
     format: media.format,
     description: media.description,
     siteUrl: media.siteUrl,
+    isLocked: Boolean(media.isLocked),
   }
 
   const { data: existing, error: existingError } = await admin
@@ -456,7 +458,7 @@ async function actionAcceptRecommendation(admin: any, userId: string, body: Reco
   // ListR-only acceptance must not depend on AniList being connected or reachable.
   // The recommendation was server-validated when it was sent, so use the stored
   // canonical metadata instead of making another AniList request here.
-  const storedMetadata = recommendation.metadata
+  const storedMetadata = recommendation.anime_metadata
   const media = {
     id: Number(recommendation.anilist_media_id),
     type: 'ANIME',
@@ -471,6 +473,7 @@ async function actionAcceptRecommendation(admin: any, userId: string, body: Reco
     format: storedMetadata?.format ?? null,
     description: storedMetadata?.description ?? null,
     siteUrl: storedMetadata?.siteUrl ?? null,
+    isLocked: Boolean(storedMetadata?.isLocked),
   }
   const listRResult = await saveRecommendationToListR(admin, userId, media)
 
@@ -501,6 +504,10 @@ async function actionAcceptRecommendation(admin: any, userId: string, body: Reco
   if (connectionError) throw Object.assign(new Error('Could not load the AniList connection.'), { status: 503, code: 'connection_status_unavailable' })
   if (!connection) throw Object.assign(new Error('Connect your AniList account before adding this recommendation to AniList.'), { status: 409, code: 'anilist_not_connected' })
   if (Date.parse(connection.token_expires_at) <= Date.now()) throw Object.assign(new Error('Your AniList authorization has expired. Reconnect AniList to continue.'), { status: 409, code: 'anilist_reauthorization_required' })
+
+  if (media.isLocked) {
+    throw Object.assign(new Error('AniList has locked this anime entry, so it cannot be added to a list.'), { status: 409, code: 'anilist_media_locked' })
+  }
 
   await addAniListAnimeToPlanning(connection.access_token, Number(recommendation.anilist_media_id))
 
