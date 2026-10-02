@@ -247,7 +247,7 @@ test('recommendation server handlers support ListR-only and optional AniList acc
   assert.match(edge, /case 'send-recommendation': result = await actionSendRecommendation\(ctx\.supabase, admin, userId, body\); break/u);
   assert.match(edge, /case 'accept-recommendation': result = await actionAcceptRecommendation\(admin, userId, body\); break/u);
   assert.match(edge, /async function actionSendRecommendation[\\s\\S]*userClient\.rpc\('create_list_r_recommendation_v2'/u);
-  assert.match(edge, /const mode = body\.mode === 'anilist' \? 'anilist' : 'listr'/u);
+  assert.match(edge, /\.select\('id,recipient_id,anilist_media_id,anime_metadata,status'\)/u);\n  assert.doesNotMatch(edge, /\.select\('id,recipient_id,anilist_media_id,metadata,status'\)/u);\n  assert.match(edge, /const mode = body\.mode === 'anilist' \? 'anilist' : 'listr'/u);
   assert.match(edge, /if \(mode === 'listr'\)[\\s\\S]*anilistState: 'unchanged'/u);
   assert.match(edge, /if \(mode === 'listr'\)[\\s\\S]*finalize_list_r_recommendation_v2/u);
   assert.match(edge, /if \(mode !== 'listr'[\\s\\S]*addAniListAnimeToPlanning/u);
@@ -270,7 +270,7 @@ test('profile dropdown closes outside and recommendation composer selects before
   assert.match(app, /document\.addEventListener\('keydown',[\s\S]*?event\.key === 'Escape'[\s\S]*?setProfileMenuOpen\(false/u);
   assert.match(html, /id="recommend-search-results" class="recommend-results"/u);
   assert.equal((html.match(/id="send-recommendation"/gu) || []).length, 1);
-  assert.match(app, /data-recommendation-search-action="select"/u);
+  assert.match(app, /data-recommendation-search-action="select"/u);\n  assert.match(app, /const localMeta = entries\.get\(id\)\?\.meta \|\| \{\}/u);\n  assert.match(app, /const description = media\.description/u);
   assert.ok(app.includes("$('#send-recommendation').addEventListener('click', () => { void sendAnimeRecommendation(); });"));
   assert.match(app, /async function sendAnimeRecommendation\(\)[\s\S]*?const media = selectedRecommendationMedia/u);
   assert.match(css, /\.recommend-dialog \.recommend-results\{[^}]*overflow-y:auto/u);
