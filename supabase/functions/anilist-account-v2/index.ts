@@ -328,6 +328,105 @@ async function actionSendRecommendation(admin: any, userId: string, body: Record
   }
 }
 
+async function saveRecommendationToListR(admin: any, userId: string, media: any) {
+  const mediaId = Number(media.id)
+  const metadata = {
+    id: mediaId,
+    type: 'ANIME',
+    isAdult: Boolean(media.isAdult),
+    title: media.title,
+    coverImage: media.coverImage,
+    episodes: media.episodes,
+    duration: media.duration,
+    status: media.status,
+    season: media.season,
+    seasonYear: media.seasonYear,
+    format: media.format,
+    description: media.description,
+    siteUrl: media.siteUrl,
+  }
+
+  const { data: existing, error: existingError } = await admin
+    .from('anime_records')
+    .select('category,watched_episodes,anime_metadata')
+    .eq('user_id', userId)
+    .eq('anilist_media_id', mediaId)
+    .maybeSingle()
+  if (existingError) {
+    throw Object.assign(new Error('Could not check the existing ListR entry.'), {
+      status: 503,
+      code: 'list_r_save_failed',
+    })
+  }
+
+  if (existing) {
+    if (existing.category !== 'interested') {
+      const { error } = await admin
+        .from('anime_records')
+        .update({ category: 'interested', updated_at: new Date().toISOString() })
+        .eq('user_id', userId)
+        .eq('anilist_media_id', mediaId)
+      if (error) {
+        throw Object.assign(new Error('Could not move the anime to ListR Interested.'), {
+          status: 503,
+          code: 'list_r_save_failed',
+        })
+      }
+    }
+    return {
+      alreadyInListR: true,
+      existingCategory: existing.category,
+    }
+  }
+
+  const { error } = await admin
+    .from('anime_records')
+    .insert({
+      user_id: userId,
+      anilist_media_id: mediaId,
+      category: 'interested',
+      watched_episodes: 0,
+      anime_metadata: metadata,
+    })
+  if (error) {
+    // A concurrent insert may have won the race. Re-read and move that entry instead
+    // of creating a duplicate or losing the acceptance operation.
+    if (error.code === '23505') {
+      const { data: raced, error: raceReadError } = await admin
+        .from('anime_records')
+        .select('category')
+        .eq('user_id', userId)
+        .eq('anilist_media_id', mediaId)
+        .maybeSingle()
+      if (!raceReadError && raced) {
+        if (raced.category !== 'interested') {
+          const { error: raceUpdateError } = await admin
+            .from('anime_records')
+            .update({ category: 'interested', updated_at: new Date().toISOString() })
+            .eq('user_id', userId)
+            .eq('anilist_media_id', mediaId)
+          if (raceUpdateError) {
+            throw Object.assign(new Error('Could not move the anime to ListR Interested.'), {
+              status: 503,
+              code: 'list_r_save_failed',
+            })
+          }
+        }
+        return { alreadyInListR: true, existingCategory: raced.category }
+      }
+    }
+    throw Object.assign(new Error('Could not save the anime to ListR Interested.'), {
+      status: 503,
+      code: 'list_r_save_failed',
+    })
+  }
+
+  return {
+    alreadyInListR: false,
+    existingCategory: null,
+  }
+}
+
 async function actionAcceptRecommendation(admin: any, userId: string, body: Record<string, unknown>) {
   const recommendationId = requireString(body.recommendationId, 'recommendation ID', 36, 36)
   if (!/^([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/iu.test(recommendationId)) {
@@ -354,6 +453,9 @@ async function actionAcceptRecommendation(admin: any, userId: string, body: Reco
     })
   }
 
+  const media = await fetchAniListAnimeById(Number(recommendation.anilist_media_id))
+  const listRResult = await saveRecommendationToListR(admin, userId, media)
+
   const { data: connection, error: connectionError } = await admin
     .from(CONNECTIONS)
     .select('access_token,token_expires_at')
@@ -378,7 +480,7 @@ async function actionAcceptRecommendation(admin: any, userId: string, body: Reco
     })
   }
 
-  // AniList is written only here, after the recipient and pending recommendation are verified.
+  // This is the only ListR operation allowed to write to AniList.
   await addAniListAnimeToPlanning(connection.access_token, Number(recommendation.anilist_media_id))
 
   const { data: finalizedStatus, error: finalizeError } = await admin.rpc(
@@ -401,6 +503,8 @@ async function actionAcceptRecommendation(admin: any, userId: string, body: Reco
     state: 'accepted',
     recommendationId,
     anilistState: 'planning',
+    alreadyInListR: listRResult.alreadyInListR,
+    existingCategory: listRResult.existingCategory,
   }
 }
 
