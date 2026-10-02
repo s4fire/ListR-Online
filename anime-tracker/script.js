@@ -55,7 +55,11 @@ let selectedFriend = null;
 let recommendationTarget = null;
 let recommendationSearchResults = [];
 let recommendationSearchController = null;
+let recommendationSending = false;
 const socialLoads = new Map();
+const profileLoads = new Map();
+let profileMenuErrorUserId = null;
+let selectedRecommendationMedia = null;
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -283,9 +287,38 @@ function renderResults() {
 }
 
 // ----------------------------- Navigation ----------------------------------
+function setProfileMenuOpen(open, { restoreFocus = false } = {}) {
+  const dropdown = $('#profile-dropdown');
+  const toggle = $('#profile-menu-toggle');
+  dropdown.hidden = !open;
+  toggle.setAttribute('aria-expanded', String(open));
+  toggle.setAttribute('aria-label', open ? 'Close profile menu' : 'Open profile menu');
+  if (restoreFocus) toggle.focus();
+}
+
+function updateProfileMenu() {
+  const label = $('#profile-menu-username');
+  if (!label) return;
+  const userId = currentUser?.id ? String(currentUser.id) : null;
+  let profileLabel = '';
+  if (!userId) {
+    label.textContent = 'Guest library';
+  } else if (socialUserId === userId) {
+    label.textContent = socialProfile?.username ? `@${socialProfile.username}` : 'Choose username';
+    profileLabel = socialProfile?.username ? ` for @${socialProfile.username}` : ' for your account';
+  } else if (profileMenuErrorUserId === userId) {
+    label.textContent = 'Profile unavailable';
+  } else {
+    label.textContent = 'Loading username…';
+  }
+  const isOpen = !$('#profile-dropdown').hidden;
+  $('#profile-menu-toggle').setAttribute('aria-label', `${isOpen ? 'Close' : 'Open'} profile menu${profileLabel}`);
+}
+
 function setView(view, { updateHash = true } = {}) {
   const valid = ['watching', 'completed', 'interested', 'search', 'stats', 'friends', 'recommendations'];
   if (!valid.includes(view)) view = 'watching';
+  setProfileMenuOpen(false);
   activeView = view;
   collectionView.hidden = !['watching', 'completed', 'interested'].includes(view);
   searchView.hidden = view !== 'search';
@@ -293,6 +326,7 @@ function setView(view, { updateHash = true } = {}) {
   friendsView.hidden = view !== 'friends';
   recommendationsView.hidden = view !== 'recommendations';
   $$('.nav-link').forEach((button) => button.classList.toggle('is-active', button.dataset.view === view));
+  $$('.profile-dropdown-link').forEach((button) => button.classList.toggle('is-active', button.dataset.view === view));
   if (['watching', 'completed', 'interested'].includes(view)) renderCollection();
   if (view === 'stats') renderStats();
   if (view === 'friends' || view === 'recommendations') void initializeSocialForUser(currentUser?.id, view);
@@ -399,7 +433,38 @@ function updateAccountBar() {
   $('#local-note').textContent = signedIn
     ? 'This account’s library is stored in Supabase. A private, per-account recovery cache is kept on this device.'
     : 'Guest lists stay in this browser. Sign in to sync a separate private cloud list.';
+  updateProfileMenu();
   renderAniListPanel();
+}
+
+async function loadMyProfileForMenu(userId) {
+  const uid = String(userId || '');
+  if (!uid || currentUser?.id !== uid || !supabaseClient) return null;
+  if (socialUserId === uid) return socialProfile;
+  if (profileLoads.has(uid)) return profileLoads.get(uid);
+  const task = (async () => {
+    try {
+      const profile = await getMyProfileV2(supabaseClient);
+      if (currentUser?.id === uid) {
+        socialProfile = profile;
+        socialUserId = uid;
+        profileMenuErrorUserId = null;
+        updateProfileMenu();
+      }
+      return profile;
+    } catch (error) {
+      if (currentUser?.id === uid) {
+        profileMenuErrorUserId = uid;
+        updateProfileMenu();
+      }
+      throw error;
+    }
+  })();
+  const trackedTask = task.finally(() => {
+    if (profileLoads.get(uid) === trackedTask) profileLoads.delete(uid);
+  });
+  profileLoads.set(uid, trackedTask);
+  return trackedTask;
 }
 
 function importDismissedKey(userId) { return `afterglow-import-dismissed-v1:${String(userId)}`; }
@@ -444,6 +509,7 @@ async function activateUser(user) {
   if (!user?.id) { enterGuest('Could not restore the account session. Your guest list is still available.'); return; }
   const userId = String(user.id);
   if (currentUser?.id === userId && cloudLibraryReady) {
+    void loadMyProfileForMenu(userId).catch(() => {});
     void initializeAniListForUser(userId);
     if (activeView === 'friends' || activeView === 'recommendations') void initializeSocialForUser(userId, activeView);
     else void refreshRecommendationBadge(userId);
@@ -458,6 +524,7 @@ async function activateUser(user) {
   cloudLibraryReady = false;
   entries.clear();
   updateAccountBar();
+  void loadMyProfileForMenu(userId).catch(() => {});
   updateMigrationBanner();
   setSyncStatus('Loading your private cloud library…');
   render();
@@ -1024,12 +1091,15 @@ function updateRecommendationBadge() {
 function resetSocialState() {
   socialProfile = null;
   socialUserId = null;
+  profileMenuErrorUserId = null;
   friends = [];
   friendSearchResults = [];
   receivedRecommendations = [];
   selectedFriend = null;
   recommendationTarget = null;
   recommendationSearchResults = [];
+  selectedRecommendationMedia = null;
+  recommendationSending = false;
   recommendationSearchController?.abort();
   for (const selector of ['#username-dialog', '#friend-profile-dialog', '#recommend-anime-dialog']) {
     const dialog = $(selector);
@@ -1039,6 +1109,7 @@ function resetSocialState() {
   renderFriendSearchResults();
   renderRecommendations();
   updateRecommendationBadge();
+  updateProfileMenu();
 }
 
 function openUsernameDialog() {
@@ -1111,8 +1182,39 @@ function renderRecommendationSearchResults() {
     const id = String(media.id);
     const title = getTitle(media.title, id);
     const format = media.format ? String(media.format).replaceAll('_', ' ') : 'Anime';
-    return `<div class="recommend-result">${imageMarkup(media, title)}<div class="recommend-result-copy"><strong title="${escapeHtml(title)}">${escapeHtml(title)}</strong><small>${escapeHtml(format)} · AniList #${escapeHtml(id)}</small></div><button class="button button-primary" type="button" data-recommendation-search-action="send" data-id="${escapeHtml(id)}">Send</button></div>`;
+    const cover = safeCover(media);
+    const image = cover
+      ? `<img class="recommend-cover" src="${escapeHtml(cover)}" alt="Cover art for ${escapeHtml(title)}" loading="lazy" referrerpolicy="no-referrer">`
+      : '<span class="recommend-cover-placeholder" aria-hidden="true">✦</span>';
+    const selected = String(selectedRecommendationMedia?.id || '') === id;
+    return `<div class="recommend-result ${selected ? 'is-selected' : ''}">${image}<div class="recommend-result-copy"><strong title="${escapeHtml(title)}">${escapeHtml(title)}</strong><small>${escapeHtml(format)} · AniList #${escapeHtml(id)}</small></div><button class="button ${selected ? 'button-quiet' : 'button-primary'}" type="button" data-recommendation-search-action="select" data-id="${escapeHtml(id)}" aria-pressed="${selected}" ${recommendationSending ? 'disabled' : ''}>${selected ? 'Selected' : 'Select'}</button></div>`;
   }).join('');
+}
+
+function renderRecommendationSelection() {
+  const container = $('#recommend-selected');
+  const button = $('#send-recommendation');
+  $('#close-recommend-anime').disabled = recommendationSending;
+  const media = selectedRecommendationMedia;
+  if (!media) {
+    container.innerHTML = '<span class="recommend-selection-empty">Select an anime to preview it here.</span>';
+    $('#recommend-selection-hint').textContent = 'Choose a result to enable sending.';
+    button.disabled = true;
+    button.textContent = 'Send Recommendation';
+    return;
+  }
+  const id = String(media.id);
+  const title = getTitle(media.title, id);
+  const format = media.format ? String(media.format).replaceAll('_', ' ') : 'Anime';
+  const year = Number.isFinite(media.seasonYear) ? ` · ${media.seasonYear}` : '';
+  const cover = safeCover(media);
+  const image = cover
+    ? `<img class="recommend-selected-cover" src="${escapeHtml(cover)}" alt="" loading="lazy" referrerpolicy="no-referrer">`
+    : '<span class="recommend-selected-cover-placeholder" aria-hidden="true">✦</span>';
+  container.innerHTML = `<div class="recommend-selected-card">${image}<div class="recommend-selected-copy"><strong title="${escapeHtml(title)}">${escapeHtml(title)}</strong><small>${escapeHtml(format)}${escapeHtml(year)} · AniList #${escapeHtml(id)}</small></div></div>`;
+  $('#recommend-selection-hint').textContent = `Selected anime for @${recommendationTarget?.username || 'your friend'}`;
+  button.disabled = !currentUser || !cloudLibraryReady || !recommendationTarget || recommendationSending;
+  button.textContent = recommendationSending ? 'Sending…' : 'Send Recommendation';
 }
 
 async function refreshRecommendationBadge(userId = currentUser?.id) {
@@ -1157,6 +1259,10 @@ async function refreshSocialLists(userId) {
   }
 }
 
+async function loadMyProfile(userId) {
+  return loadMyProfileForMenu(userId);
+}
+
 async function initializeSocialForUser(userId, requestedView = activeView) {
   if (userId === 'pending') userId = null;
   if (!userId) {
@@ -1167,25 +1273,17 @@ async function initializeSocialForUser(userId, requestedView = activeView) {
       if (!$('#auth-dialog').open) openAuthDialog('login');
       return;
     }
-
-    // The Supabase client restores the persisted session asynchronously. Give that
-    // restore a moment to finish before deciding that the user is logged out.
     await new Promise((resolve) => window.setTimeout(resolve, 500));
     if (currentUser?.id) return initializeSocialForUser(currentUser.id, requestedView);
-
     try {
       const { data, error } = await supabaseClient.auth.getSession();
       if (!error && data?.session?.user) {
         await activateUser(data.session.user);
         if (currentUser?.id) return initializeSocialForUser(currentUser.id, requestedView);
       }
-    } catch {
-      // If session restoration fails, the normal signed-out fallback below handles it.
-    }
-
+    } catch {}
     await new Promise((resolve) => window.setTimeout(resolve, 350));
     if (currentUser?.id) return initializeSocialForUser(currentUser.id, requestedView);
-
     const message = 'Sign in to ListR to use Friends and Recommendations. Your guest library remains separate.';
     if (requestedView === 'friends') setFriendsMessage(message, 'error');
     if (requestedView === 'recommendations') setRecommendationsMessage(message, 'error');
@@ -1202,10 +1300,12 @@ async function initializeSocialForUser(userId, requestedView = activeView) {
   if (socialLoads.has(uid)) return socialLoads.get(uid);
   const task = (async () => {
     try {
-      const profile = await getMyProfileV2(supabaseClient);
+      const profile = await loadMyProfile(uid);
       if (currentUser?.id !== uid) return;
       socialUserId = uid;
       socialProfile = profile;
+      profileMenuErrorUserId = null;
+      updateProfileMenu();
       $('#edit-username').hidden = Boolean(profile?.username);
       if (!profile?.username) {
         if (requestedView === 'friends') setFriendsMessage('Choose a unique username before using Friends.', 'error');
@@ -1382,7 +1482,10 @@ async function openRecommendationComposer() {
   if (!selectedFriend || selectedFriend.relationship !== 'accepted') return;
   recommendationTarget = selectedFriend;
   recommendationSearchResults = [];
+  selectedRecommendationMedia = null;
+  recommendationSending = false;
   renderRecommendationSearchResults();
+  renderRecommendationSelection();
   $('#recommend-recipient').textContent = `Send to @${selectedFriend.username}. Only an AniList-verified anime can be recommended.`;
   $('#recommend-search-message').textContent = 'Choose an anime from the AniList search results.';
   $('#recommend-query').value = '';
@@ -1412,27 +1515,38 @@ async function submitRecommendationSearch(event) {
   } finally { button.disabled = false; }
 }
 
-async function sendAnimeRecommendation(media) {
-  if (!currentUser || !cloudLibraryReady || !recommendationTarget) return;
+async function sendAnimeRecommendation() {
+  const media = selectedRecommendationMedia;
+  const target = recommendationTarget;
+  if (!currentUser || !cloudLibraryReady || !target || !media || recommendationSending) return;
   const uid = currentUser.id;
   const mediaId = Number(media?.id);
   if (!Number.isSafeInteger(mediaId) || mediaId < 1) return;
-  const button = $(`[data-recommendation-search-action="send"][data-id="${CSS.escape(String(mediaId))}"]`);
-  if (button) button.disabled = true;
+  recommendationSending = true;
+  renderRecommendationSearchResults();
+  renderRecommendationSelection();
   $('#recommend-search-message').textContent = 'Verifying the anime with AniList and sending…';
   try {
-    const result = await invokeAniListActionV2(supabaseClient, 'send-recommendation', {
-      recipientId: recommendationTarget.userId,
+    await invokeAniListActionV2(supabaseClient, 'send-recommendation', {
+      recipientId: target.userId,
       mediaId,
     });
     if (currentUser?.id !== uid) return;
     $('#recommend-anime-dialog').close();
     $('#friend-profile-dialog').close();
-    showToast(`Recommendation sent to @${recommendationTarget.username}.`);
+    showToast(`Recommendation sent to @${target.username}.`);
     recommendationTarget = null;
+    selectedRecommendationMedia = null;
+    recommendationSearchResults = [];
   } catch (error) {
-    $('#recommend-search-message').textContent = safeAniListErrorMessageV2(error);
-  } finally { if (button) button.disabled = false; }
+    if (currentUser?.id === uid) $('#recommend-search-message').textContent = safeAniListErrorMessageV2(error);
+  } finally {
+    if (currentUser?.id === uid) {
+      recommendationSending = false;
+      renderRecommendationSearchResults();
+      renderRecommendationSelection();
+    }
+  }
 }
 
 function applyRecommendationLocally(recommendation, category = 'interested') {
@@ -1586,6 +1700,14 @@ function moveEntry(id, category) {
 // ----------------------------- Event handling ------------------------------
 $('#open-login').addEventListener('click', () => openAuthDialog('login'));
 $('#open-register').addEventListener('click', () => openAuthDialog('register'));
+$('#profile-menu-toggle').addEventListener('click', () => setProfileMenuOpen($('#profile-dropdown').hidden));
+document.addEventListener('click', (event) => {
+  if (!$('#profile-menu').contains(event.target)) setProfileMenuOpen(false);
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && !$('#profile-dropdown').hidden) setProfileMenuOpen(false, { restoreFocus: true });
+});
+$$('.profile-dropdown-link').forEach((button) => button.addEventListener('click', () => setView(button.dataset.view)));
 $('#auth-tab-login').addEventListener('click', () => setAuthMode('login'));
 $('#auth-tab-register').addEventListener('click', () => setAuthMode('register'));
 $('#close-auth').addEventListener('click', () => $('#auth-dialog').close());
@@ -1612,6 +1734,8 @@ $('#username-form').addEventListener('submit', async (event) => {
     socialProfile = await setUsernameV2(supabaseClient, username);
     if (currentUser?.id !== uid) return;
     socialUserId = uid;
+    profileMenuErrorUserId = null;
+    updateProfileMenu();
     $('#edit-username').hidden = true;
     $('#username-dialog').close();
     await refreshSocialLists(uid);
@@ -1628,20 +1752,6 @@ $('#username-form').addEventListener('submit', async (event) => {
 });
 $('#close-username').addEventListener('click', () => $('#username-dialog').close());
 $('#edit-username').addEventListener('click', openUsernameDialog);
-$('#add-friend').addEventListener('click', () => {
-  if (!currentUser) {
-    void initializeSocialForUser('pending', 'friends');
-    return;
-  }
-  if (!socialProfile?.username) {
-    void initializeSocialForUser(currentUser.id, 'friends');
-    return;
-  }
-  const input = $('#friend-query');
-  input.focus();
-  input.select();
-  setFriendsMessage('Search for a ListR username to send a friend request.');
-});
 $('#friend-search-form').addEventListener('submit', submitFriendSearch);
 $('#incoming-friends').addEventListener('click', handleSocialListClick);
 $('#friends-list').addEventListener('click', handleSocialListClick);
@@ -1654,12 +1764,27 @@ $('#recommend-to-friend').addEventListener('click', openRecommendationComposer);
 $('#unfriend-user').addEventListener('click', () => { if (selectedFriend?.friendshipId) void removeFriend(selectedFriend.friendshipId); });
 $('#recommend-search-form').addEventListener('submit', submitRecommendationSearch);
 $('#close-recommend-anime').addEventListener('click', () => { recommendationSearchController?.abort(); $('#recommend-anime-dialog').close(); });
-$('#recommend-search-results').addEventListener('click', (event) => {
-  const button = event.target.closest('[data-recommendation-search-action="send"]');
-  if (!button) return;
-  const media = recommendationSearchResults.find((item) => String(item.id) === button.dataset.id);
-  if (media) void sendAnimeRecommendation(media);
+$('#recommend-anime-dialog').addEventListener('cancel', (event) => { if (recommendationSending) event.preventDefault(); });
+$('#recommend-anime-dialog').addEventListener('close', () => {
+  recommendationSearchController?.abort();
+  if (recommendationSending) return;
+  recommendationSearchResults = [];
+  selectedRecommendationMedia = null;
+  recommendationTarget = null;
+  renderRecommendationSearchResults();
+  renderRecommendationSelection();
 });
+$('#recommend-search-results').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-recommendation-search-action="select"]');
+  if (!button || recommendationSending) return;
+  const media = recommendationSearchResults.find((item) => String(item.id) === button.dataset.id);
+  if (media) {
+    selectedRecommendationMedia = media;
+    renderRecommendationSearchResults();
+    renderRecommendationSelection();
+  }
+});
+$('#send-recommendation').addEventListener('click', () => { void sendAnimeRecommendation(); });
 $('#recommendations-list').addEventListener('click', (event) => {
   const button = event.target.closest('[data-recommendation-action]');
   if (!button) return;
