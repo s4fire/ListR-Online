@@ -1198,6 +1198,11 @@ function renderRecommendationReminders() {
   const container = $('#recommendation-reminders');
   if (!container) return;
   const reminders = [...recommendationReminders.values()];
+  if (!reminders.length) {
+    container.innerHTML = '';
+    try { if (container.matches(':popover-open')) container.hidePopover(); } catch {}
+    return;
+  }
   container.innerHTML = reminders.map((reminder) =>
     '<article class="recommendation-reminder" data-recommendation-reminder="' + escapeHtml(reminder.recommendationId) + '">' +
       '<div class="recommendation-reminder-copy">' +
@@ -1208,6 +1213,9 @@ function renderRecommendationReminders() {
       '<button class="button button-primary recommendation-reminder-action" type="button" data-reminder-action="add" data-media-title="' + escapeHtml(reminder.title) + '">Add anime</button>' +
     '</article>'
   ).join('');
+  try {
+    if (typeof container.showPopover === 'function' && !container.matches(':popover-open')) container.showPopover();
+  } catch {}
 }
 
 function reconcileRecommendationReminders() {
