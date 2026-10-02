@@ -140,7 +140,7 @@
       </section>
 
       <section class="page-view social-view" id="recommendations-view" aria-labelledby="recommendations-title" hidden>
-        <div class="subpage-heading"><p class="eyebrow">A FRIEND THOUGHT YOU’D LOVE</p><h1 id="recommendations-title">Stories worth <span>sharing.</span></h1><p>Anime friends have sent your way. Accepting adds it to ListR Interested and AniList Planning.</p></div>
+        <div class="subpage-heading"><p class="eyebrow">A FRIEND THOUGHT YOU’D LOVE</p><h1 id="recommendations-title">Stories worth <span>sharing.</span></h1><p>Anime friends have sent your way. Accept to get a reminder to add it to your ListR library, or deny it.</p></div>
         <div class="social-toolbar"><button class="button button-quiet" id="refresh-recommendations" type="button">↻ Refresh recommendations</button></div>
         <p id="recommendations-message" class="message" role="status" aria-live="polite">Sign in to see recommendations sent to you.</p>
         <div id="recommendations-list" class="anime-grid social-anime-grid"></div>
@@ -222,6 +222,7 @@
     <div class="recommend-footer"><p id="recommend-selection-hint">Choose a result to enable sending.</p><button id="send-recommendation" class="button button-primary" type="button" disabled>Send Recommendation</button></div>
   </dialog>
 
+  <div id="recommendation-reminders" class="recommendation-reminders" aria-live="polite" aria-label="Accepted anime reminders"></div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <noscript><div class="noscript">ListR needs JavaScript enabled to search AniList and manage your tracker.</div></noscript>
 </body>
