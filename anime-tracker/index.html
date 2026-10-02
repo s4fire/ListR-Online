@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0d0c13">
+  <meta name="referrer" content="no-referrer">
   <meta name="description" content="Track anime with AniList search, personal episode progress, and optional secure cloud sync.">
   <title>ListR — Anime Tracker</title>
   <link rel="preconnect" href="https://graphql.anilist.co">
@@ -13,12 +14,12 @@
   <link rel="stylesheet" href="./account.css">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script type="module" src="./script.js"></script>
-  </head>
+</head>
 <body class="auth-loading">
   <div id="app-loading" class="app-loading" role="status">Checking your saved library…</div>
   <div class="app-shell">
     <header class="topbar">
-      <a class="brand" href="#watching" aria-label="ListR home">
+      <a class="brand" href="#watching" aria-label="ListR Anime Tracker home">
         <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
         <span>ListR<span class="brand-dot">.</span></span>
       </a>
@@ -28,7 +29,7 @@
         <button class="nav-link" type="button" data-view="interested">Interested <span class="nav-count" id="nav-interested">0</span></button>
         <button class="nav-link" type="button" data-view="stats">Stats</button>
       </nav>
-      <button class="button button-primary top-add" id="open-search" type="button"><span aria-hidden="true">＋</span> Add anime</button></div>
+      <button class="button button-primary top-add" id="open-search" type="button"><span aria-hidden="true">＋</span> Add anime</button>
     </header>
 
     <section class="account-bar" aria-label="Account and cloud sync status">
@@ -40,6 +41,29 @@
         <button class="button button-primary account-button" id="open-register" type="button">Create account</button>
       </div>
       <button class="button button-quiet account-button" id="logout-button" type="button" hidden>Sign out</button>
+    </section>
+
+    <section id="anilist-panel" class="anilist-panel" aria-label="AniList account connection" hidden>
+      <div class="anilist-heading">
+        <div class="anilist-identity">
+          <span class="section-kicker">OPTIONAL ACCOUNT LINK</span>
+          <div class="anilist-title-row"><h2>AniList</h2><span id="anilist-connection-state" class="anilist-state is-idle">Not Connected</span></div>
+          <p id="anilist-account-name" class="anilist-account-name">Connect your AniList account to sync watch progress.</p>
+        </div>
+        <div class="anilist-actions">
+          <button id="connect-anilist" class="button button-primary anilist-button" type="button">Connect AniList</button>
+          <button id="sync-anilist" class="button button-primary anilist-button" type="button" hidden>Sync with AniList</button>
+          <button id="disconnect-anilist" class="button button-quiet anilist-button" type="button" hidden>Disconnect</button>
+        </div>
+      </div>
+      <p id="anilist-sync-message" class="anilist-sync-message" role="status" aria-live="polite">Your AniList account remains separate from your ListR sign-in.</p>
+      <div id="anilist-sync-progress" class="anilist-progress" role="status" aria-live="polite" hidden>
+        <span class="anilist-spinner" aria-hidden="true"></span>
+        <span id="anilist-progress-label">Syncing with AniList…</span>
+        <progress aria-label="AniList progress synchronization in progress"></progress>
+      </div>
+      <p id="anilist-last-sync" class="anilist-last-sync">Last successful sync: never</p>
+      <p class="anilist-disclosure">AniList does not support OAuth scopes, so approval can grant broad AniList data access. ListR keeps the token in Supabase and only reads anime progress; it never writes to AniList.</p>
     </section>
 
     <section id="migration-banner" class="migration-banner" aria-labelledby="migration-title" hidden>
@@ -105,7 +129,7 @@
         </div>
       </section>
 
-      <footer class="site-footer"><span>LISTR <i>·</i> ANIME TRACKER</span><span>Powered by <a href="https://anilist.co" target="_blank" rel="noreferrer">AniList</a> <span aria-hidden="true">✦</span></span></footer>
+      <footer class="site-footer"><span>AFTERGLOW <i>·</i> ANIME TRACKER</span><span>Powered by <a href="https://anilist.co" target="_blank" rel="noreferrer">AniList</a> <span aria-hidden="true">✦</span></span></footer>
     </main>
   </div>
 
