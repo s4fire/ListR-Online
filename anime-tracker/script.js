@@ -1660,21 +1660,37 @@ async function refreshCurrentSocialPage() {
   else await refreshRecommendationBadge(uid);
 }
 
-async function initializeAccount() {
-  if (!supabaseClient) { enterGuest('Supabase could not be loaded. Guest mode is available; sign-in needs the account service.'); return; }
+function initializeAccount() {
+  if (!supabaseClient) {
+    enterGuest('Supabase could not be loaded. Guest mode is available; sign-in needs the account service.');
+    return;
+  }
+
+  // Supabase initializes auth automatically when the client is created and emits
+  // INITIAL_SESSION when that work finishes. Calling getSession() here creates a
+  // second startup path that can race the client's own initialization/refresh work
+  // and leave the UI waiting forever on older auth-js versions.
+  //
+  // Subscribe once and let Supabase deliver the authoritative initial session.
+  // Keep all follow-up Supabase calls outside the auth callback's synchronous turn.
   try {
-    const { data, error } = await supabaseClient.auth.getSession();
-    if (error) throw error;
     supabaseClient.auth.onAuthStateChange((event, session) => {
       window.setTimeout(() => {
-        if (event === 'SIGNED_OUT') enterGuest();
-        else if (session?.user) void activateUser(session.user);
+        try {
+          if (event === 'SIGNED_OUT') {
+            enterGuest();
+          } else if (session?.user) {
+            void activateUser(session.user);
+          } else if (event === 'INITIAL_SESSION') {
+            enterGuest();
+          }
+        } catch (error) {
+          enterGuest('Could not restore the account session: ' + cloudErrorMessage(error) + ' Guest data remains separate.');
+        }
       }, 0);
     });
-    if (data?.session?.user) await activateUser(data.session.user);
-    else enterGuest();
   } catch (error) {
-    enterGuest(`Could not restore your cloud session: ${cloudErrorMessage(error)} Guest data remains separate.`);
+    enterGuest('Could not initialize cloud sign-in: ' + cloudErrorMessage(error) + ' Guest data remains separate.');
   }
 }
 
