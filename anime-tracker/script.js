@@ -1558,37 +1558,43 @@ function applyRecommendationLocally(recommendation, category = 'interested') {
   render();
 }
 
-async function acceptRecommendation(recommendationId) {
+async function acceptRecommendation(recommendationId, mode = 'listr') {
   if (!currentUser || !cloudLibraryReady || socialBusy) return;
   const recommendation = receivedRecommendations.find((item) => String(item.recommendation_id) === String(recommendationId));
   if (!recommendation) return;
   const uid = currentUser.id;
-  try {
-    const status = await invokeAniListActionV2(supabaseClient, 'status');
-    if (currentUser?.id !== uid) return;
-    if (status.state !== 'connected') {
-      updateAniListState(status.state === 'error' ? 'error' : 'not_connected', {
-        message: status.message || 'Connect AniList before accepting a recommendation to Planning.',
-        messageType: 'error',
-      });
-      setRecommendationsMessage('Connect AniList first. Add to Interested will also add the anime to AniList Planning.', 'error');
-      if (window.confirm('Connect or reconnect AniList now? The recommendation will remain here until both ListR and AniList have confirmed acceptance.')) await connectAniList();
+  if (mode === 'anilist') {
+    try {
+      const status = await invokeAniListActionV2(supabaseClient, 'status');
+      if (currentUser?.id !== uid) return;
+      if (status.state !== 'connected') {
+        updateAniListState(status.state === 'error' ? 'error' : 'not_connected', {
+          message: status.message || 'Connect AniList before adding this recommendation to AniList.',
+          messageType: 'error',
+        });
+        setRecommendationsMessage('AniList is not connected. You can still add this recommendation to ListR without affecting AniList.', 'error');
+        return;
+      }
+    } catch (error) {
+      setRecommendationsMessage(safeAniListErrorMessageV2(error), 'error');
       return;
     }
-  } catch (error) {
-    setRecommendationsMessage(safeAniListErrorMessageV2(error), 'error');
-    return;
   }
 
   socialBusy = true;
   const card = $(`[data-recommendation-id="${CSS.escape(String(recommendationId))}"]`);
-  const button = card?.querySelector('[data-recommendation-action="accept"]');
+  const button = card?.querySelector(`[data-recommendation-action="${mode === 'anilist' ? 'accept-anilist' : 'accept'}"]`);
   if (button) { button.disabled = true; button.textContent = 'Adding…'; }
-  setRecommendationsMessage('Saving the anime to ListR and then confirming its AniList Planning status…');
+  setRecommendationsMessage(mode === 'anilist'
+    ? 'Saving the anime to ListR and then adding it to AniList Planning…'
+    : 'Saving the anime to your ListR Interested list…');
   try {
-    const result = await invokeAniListActionV2(supabaseClient, 'accept-recommendation', { recommendationId: String(recommendationId) });
+    const result = await invokeAniListActionV2(supabaseClient, 'accept-recommendation', {
+      recommendationId: String(recommendationId),
+      mode,
+    });
     if (currentUser?.id !== uid) return;
-    if (!result || result.state !== 'accepted') throw new Error('AniList and ListR did not both confirm this recommendation. It remains available to retry.');
+    if (!result || result.state !== 'accepted') throw new Error('ListR did not confirm this recommendation. It remains available to retry.');
     if (!result.alreadyInListR || entries.has(String(recommendation.anilist_media_id))) applyRecommendationLocally(recommendation, 'interested');
     else {
       try {
@@ -1608,15 +1614,13 @@ async function acceptRecommendation(recommendationId) {
       ? ` Its existing ListR entry was moved from ${categoryName(result.existingCategory || 'the previous category')} to Interested; its watched count and metadata were preserved.`
       : result.alreadyInListR
         ? ' It was already in ListR Interested, so no duplicate was created.'
-      : ' It is now in your ListR Interested list.';
-    const planningNote = result.anilistState === 'already_planning' ? ' It was already in AniList Planning.' : ' It was added to AniList Planning.';
+        : ' It is now in your ListR Interested list.';
+    const planningNote = mode === 'anilist' ? ' It was also added to AniList Planning.' : ' AniList was not changed.';
     setRecommendationsMessage(`Recommendation accepted.${existingNote}${planningNote}`);
-    showToast('Recommendation accepted. ListR and AniList confirmed the update.');
+    showToast(mode === 'anilist' ? 'Recommendation added to ListR and AniList.' : 'Recommendation added to ListR.');
   } catch (error) {
     if (currentUser?.id !== uid) return;
-    if (['recommendation_anilist_write_failed', 'recommendation_finalize_failed'].includes(error?.code)) {
-      applyRecommendationLocally(recommendation, 'interested');
-    }
+    if (error?.code === 'recommendation_finalize_failed') applyRecommendationLocally(recommendation, 'interested');
     setRecommendationsMessage(safeAniListErrorMessageV2(error), 'error');
   } finally {
     socialBusy = false;
