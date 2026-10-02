@@ -1601,6 +1601,7 @@ $('#username-form').addEventListener('submit', async (event) => {
 });
 $('#close-username').addEventListener('click', () => $('#username-dialog').close());
 $('#edit-username').addEventListener('click', openUsernameDialog);
+$('#add-friend').addEventListener('click', () => { if (!currentUser) { openAuthDialog('login'); return; } if (!socialProfile?.username) { openUsernameDialog(); return; } const input = $('#friend-query'); input.focus(); input.select(); setFriendsMessage('Search for a ListR username to send a friend request.'); });
 $('#friend-search-form').addEventListener('submit', submitFriendSearch);
 $('#incoming-friends').addEventListener('click', handleSocialListClick);
 $('#friends-list').addEventListener('click', handleSocialListClick);
