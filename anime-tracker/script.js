@@ -4,6 +4,7 @@ import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from './supabase-config.js';
 import { enqueueCloudOperation, loadUserEntries, mergePendingOperations, readCloudCache, readOutbox, removeCompletedOperation, removeUserEntry, saveUserEntry, writeCloudCache } from './cloud-store.js';
 import { validateAuthFields } from './auth-validation.js';
 import { canUseAniListV2, clearAniListOAuthAttemptV2, invokeAniListActionV2, isPotentialAniListOAuthReturnV2, readAniListCallbackV2, readAniListOAuthAttemptV2, removeAniListCallbackParamsV2, safeAniListErrorMessageV2, shouldAutoSyncAniListV2, storeAniListOAuthAttemptV2, validateProgressResponseV2 } from './anilist-integration-v2.js';
+import { dismissRecommendationV2, getFriendStatsV2, getMyProfileV2, listFriendsV2, listReceivedRecommendationsV2, normalizeUsernameV2, respondFriendRequestV2, searchListRUsersV2, sendFriendRequestV2, setUsernameV2, socialErrorMessageV2, unfriendV2 } from './social-v2.js';
 
 // ----------------------------- App state -----------------------------------
 const STORE_KEY = 'afterglow-anime-tracker-v1';
@@ -44,12 +45,25 @@ let anilistLastRequestAt = 0;
 let anilistSyncEpoch = 0;
 let anilistStatusUserId = null;
 const activeAniListStatusLoads = new Map();
+let socialProfile = null;
+let socialUserId = null;
+let socialBusy = false;
+let friends = [];
+let friendSearchResults = [];
+let receivedRecommendations = [];
+let selectedFriend = null;
+let recommendationTarget = null;
+let recommendationSearchResults = [];
+let recommendationSearchController = null;
+const socialLoads = new Map();
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const collectionView = $('#collection-view');
 const searchView = $('#search-view');
 const statsView = $('#stats-view');
+const friendsView = $('#friends-view');
+const recommendationsView = $('#recommendations-view');
 const collectionGrid = $('#collection-grid');
 const collectionEmpty = $('#collection-empty');
 const searchResultsEl = $('#search-results');
@@ -248,8 +262,7 @@ function renderStats() {
 function render() {
   renderCounts();
   renderStats();
-  if (activeView === 'stats' || activeView === 'search') return;
-  renderCollection();
+  if (['watching', 'completed', 'interested'].includes(activeView)) renderCollection();
 }
 
 function renderResults() {
@@ -271,13 +284,18 @@ function renderResults() {
 
 // ----------------------------- Navigation ----------------------------------
 function setView(view, { updateHash = true } = {}) {
+  const valid = ['watching', 'completed', 'interested', 'search', 'stats', 'friends', 'recommendations'];
+  if (!valid.includes(view)) view = 'watching';
   activeView = view;
-  collectionView.hidden = view === 'search' || view === 'stats';
+  collectionView.hidden = !['watching', 'completed', 'interested'].includes(view);
   searchView.hidden = view !== 'search';
   statsView.hidden = view !== 'stats';
+  friendsView.hidden = view !== 'friends';
+  recommendationsView.hidden = view !== 'recommendations';
   $$('.nav-link').forEach((button) => button.classList.toggle('is-active', button.dataset.view === view));
-  if (view !== 'search' && view !== 'stats') renderCollection();
+  if (['watching', 'completed', 'interested'].includes(view)) renderCollection();
   if (view === 'stats') renderStats();
+  if (view === 'friends' || view === 'recommendations') void initializeSocialForUser(currentUser?.id, view);
   if (updateHash) window.location.hash = view === 'search' ? 'add' : view;
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
@@ -409,6 +427,7 @@ function enterGuest(message = '') {
   activeUserLoad = null;
   currentUser = null;
   cloudLibraryReady = false;
+  resetSocialState();
   resetAniListPanel();
   entries.clear();
   for (const entry of readEntries(storage, STORE_KEY)) entries.set(String(entry.id), entry);
@@ -424,11 +443,16 @@ function enterGuest(message = '') {
 async function activateUser(user) {
   if (!user?.id) { enterGuest('Could not restore the account session. Your guest list is still available.'); return; }
   const userId = String(user.id);
-  if (currentUser?.id === userId && cloudLibraryReady) { void initializeAniListForUser(userId); return; }
+  if (currentUser?.id === userId && cloudLibraryReady) {
+    void initializeAniListForUser(userId);
+    if (activeView === 'friends' || activeView === 'recommendations') void initializeSocialForUser(userId, activeView);
+    else void refreshRecommendationBadge(userId);
+    return;
+  }
   if (activatingUserId === userId && activeUserLoad) return activeUserLoad;
 
   const token = ++authEpoch;
-  if (currentUser?.id !== userId) resetAniListPanel();
+  if (currentUser?.id !== userId) { resetAniListPanel(); resetSocialState(); }
   activatingUserId = userId;
   currentUser = { id: userId, email: String(user.email || '') };
   cloudLibraryReady = false;
@@ -454,6 +478,8 @@ async function activateUser(user) {
       render();
       updateMigrationBanner();
       setAppReady();
+      void refreshRecommendationBadge(userId);
+      if (activeView === 'friends' || activeView === 'recommendations') void initializeSocialForUser(userId, activeView);
       if (pending.length) {
         void initializeAniListForUser(userId, { allowAutoSync: false });
         void flushCloudQueue(userId).then(() => maybeAutoSyncAniList(userId));
@@ -834,9 +860,12 @@ function setAuthMode(mode) {
   $('#auth-tab-register').setAttribute('aria-selected', String(registering));
   $('#confirm-password-field').hidden = !registering;
   $('#auth-confirm-password').required = registering;
+  $('#register-username-field').hidden = !registering;
+  $('#username-help').hidden = !registering;
+  $('#auth-username').required = registering;
   $('#auth-password').autocomplete = registering ? 'new-password' : 'current-password';
   $('#auth-title').textContent = registering ? 'Create your account.' : 'Welcome back.';
-  $('#auth-intro').textContent = registering ? 'Make an account to keep your anime library in sync across devices.' : 'Sign in to load your private library from the cloud.';
+  $('#auth-intro').textContent = registering ? 'Choose a unique username for Friends and keep your anime library in sync across devices.' : 'Sign in to load your private library from the cloud.';
   $('#auth-submit').textContent = registering ? 'Create account' : 'Sign in';
   setAuthMessage('');
 }
@@ -853,7 +882,7 @@ function openAuthDialog(mode) {
   const dialog = $('#auth-dialog');
   if (typeof dialog.showModal === 'function') dialog.showModal();
   else dialog.setAttribute('open', '');
-  $('#auth-email').focus();
+  $(mode === 'register' ? '#auth-username' : '#auth-email').focus();
 }
 
 function friendlyAuthError(error, mode) {
@@ -861,15 +890,18 @@ function friendlyAuthError(error, mode) {
   if (/network|fetch|timeout|unavailable/i.test(message)) return 'Could not reach the account service. Check your connection and try again.';
   if (mode === 'login' && /not confirmed|confirm your email/i.test(message)) return 'Verify your email first, then sign in again.';
   if (mode === 'login') return 'Email or password did not match. If you just registered, verify your email first.';
+  if (mode === 'register' && /username|duplicate key|list_r_profiles_v2_username_unique/i.test(message)) return 'That username is already taken or could not be saved. Choose another username and try again.';
+  if (mode === 'register' && /database error saving new user/i.test(message)) return 'The account could not be created. That username may already be taken, or the Friends database migration may not be installed yet.';
   return message.length > 180 ? `${message.slice(0, 177)}…` : (message || 'Could not create the account. Please try again.');
 }
 
 async function handleAuthSubmit(event) {
   event.preventDefault();
   const email = $('#auth-email').value.trim().toLowerCase();
+  const username = normalizeUsernameV2($('#auth-username').value);
   const password = $('#auth-password').value;
   const confirmPassword = $('#auth-confirm-password').value;
-  const validation = validateAuthFields({ mode: authMode, email, password, confirmPassword });
+  const validation = validateAuthFields({ mode: authMode, email, username, password, confirmPassword });
   if (validation) { setAuthMessage(validation, 'error'); return; }
   if (!supabaseClient) { setAuthMessage('Supabase could not be loaded. Refresh the page or continue as a guest.', 'error'); return; }
 
@@ -882,7 +914,7 @@ async function handleAuthSubmit(event) {
       const { data, error } = await supabaseClient.auth.signUp({
         email,
         password,
-        options: { emailRedirectTo: redirectTo }
+        options: { emailRedirectTo: redirectTo, data: { username } }
       });
       if (error) throw error;
       $('#auth-password').value = '';
@@ -966,6 +998,513 @@ async function importGuestLibrary() {
   }
 }
 
+// ----------------------------- Friends and recommendations v2 --------------
+function setFriendsMessage(message, type = '') {
+  const element = $('#friends-message');
+  element.textContent = message;
+  element.className = `message ${type ? 'social-message-error' : ''}`.trim();
+}
+
+function setRecommendationsMessage(message, type = '') {
+  const element = $('#recommendations-message');
+  element.textContent = message;
+  element.className = `message ${type ? 'social-message-error' : ''}`.trim();
+}
+
+function updateRecommendationBadge() {
+  const badge = $('#nav-recommendations');
+  const count = receivedRecommendations.length;
+  badge.textContent = count > 99 ? '99+' : String(count);
+  badge.classList.toggle('has-pending', count > 0);
+  badge.setAttribute('aria-label', count ? `${count} pending recommendation${count === 1 ? '' : 's'}` : 'No pending recommendations');
+  badge.hidden = count === 0;
+  if (activeView === 'recommendations') renderRecommendations();
+}
+
+function resetSocialState() {
+  socialProfile = null;
+  socialUserId = null;
+  friends = [];
+  friendSearchResults = [];
+  receivedRecommendations = [];
+  selectedFriend = null;
+  recommendationTarget = null;
+  recommendationSearchResults = [];
+  recommendationSearchController?.abort();
+  for (const selector of ['#username-dialog', '#friend-profile-dialog', '#recommend-anime-dialog']) {
+    const dialog = $(selector);
+    if (dialog?.open) dialog.close();
+  }
+  renderFriendRows();
+  renderFriendSearchResults();
+  renderRecommendations();
+  updateRecommendationBadge();
+}
+
+function openUsernameDialog() {
+  $('#username-message').textContent = '';
+  $('#profile-username').value = '';
+  const dialog = $('#username-dialog');
+  if (!dialog.open) dialog.showModal();
+  $('#profile-username').focus();
+}
+
+function renderSocialEmpty(container, message) {
+  container.innerHTML = `<div class="social-empty">${escapeHtml(message)}</div>`;
+}
+
+function renderFriendRows() {
+  const incoming = friends.filter((friend) => friend.status === 'pending' && friend.incoming);
+  const others = friends.filter((friend) => !(friend.status === 'pending' && friend.incoming));
+  const incomingContainer = $('#incoming-friends');
+  const friendsContainer = $('#friends-list');
+  incomingContainer.innerHTML = incoming.length ? incoming.map((friend) => `<div class="social-row"><div class="social-person"><strong>@${escapeHtml(friend.username)}</strong><small>Sent ${escapeHtml(new Date(friend.created_at).toLocaleDateString())}</small></div><div class="social-actions"><button class="button button-primary" type="button" data-social-action="accept-request" data-friendship-id="${escapeHtml(friend.friendship_id)}">Accept</button><button class="button button-quiet" type="button" data-social-action="decline-request" data-friendship-id="${escapeHtml(friend.friendship_id)}">Decline</button></div></div>`).join('') : '';
+  friendsContainer.innerHTML = others.length ? others.map((friend) => {
+    const accepted = friend.status === 'accepted';
+    const action = accepted
+      ? `<button class="button button-quiet" type="button" data-social-action="profile" data-user-id="${escapeHtml(friend.friend_user_id)}" data-username="${escapeHtml(friend.username)}" data-relationship="accepted" data-friendship-id="${escapeHtml(friend.friendship_id)}">View profile</button>`
+      : `<span class="relationship-label">Request sent</span><button class="button button-quiet" type="button" data-social-action="cancel-request" data-friendship-id="${escapeHtml(friend.friendship_id)}">Cancel</button>`;
+    return `<div class="social-row"><div class="social-person"><strong>@${escapeHtml(friend.username)}</strong><small>${accepted ? 'ListR friend' : 'Waiting for a response'}</small></div><div class="social-actions">${action}</div></div>`;
+  }).join('') : '';
+  if (!incoming.length) renderSocialEmpty(incomingContainer, 'No incoming friend requests.');
+  if (!others.length) renderSocialEmpty(friendsContainer, 'Your friends and outgoing requests will appear here.');
+}
+
+function renderFriendSearchResults() {
+  const container = $('#friend-search-results');
+  if (!friendSearchResults.length) {
+    renderSocialEmpty(container, 'Search usernames to find ListR users.');
+    return;
+  }
+  container.innerHTML = friendSearchResults.map((person) => {
+    const relationship = person.relationship || 'none';
+    const friendship = friends.find((friend) => String(friend.friend_user_id) === String(person.user_id));
+    const status = relationship === 'accepted' ? 'Friends'
+      : relationship === 'pending' ? (friendship?.incoming ? 'Incoming request' : 'Request pending')
+        : 'ListR user';
+    const actions = `<button class="button button-quiet" type="button" data-social-action="profile" data-user-id="${escapeHtml(person.user_id)}" data-username="${escapeHtml(person.username)}" data-relationship="${escapeHtml(relationship)}" data-friendship-id="${escapeHtml(friendship?.friendship_id || '')}">View profile</button>${relationship === 'none' ? `<button class="button button-primary" type="button" data-social-action="send-request" data-user-id="${escapeHtml(person.user_id)}">Add friend</button>` : ''}`;
+    return `<div class="social-row"><div class="social-person"><strong>@${escapeHtml(person.username)}</strong><small>${escapeHtml(status)}</small></div><div class="social-actions">${actions}</div></div>`;
+  }).join('');
+}
+
+function renderRecommendations() {
+  const container = $('#recommendations-list');
+  const hasRecommendations = receivedRecommendations.length > 0;
+  container.innerHTML = receivedRecommendations.map((recommendation) => {
+    const media = recommendation.anime_metadata || {};
+    const id = String(recommendation.anilist_media_id);
+    const title = getTitle(media.title, id);
+    const format = media.format ? String(media.format).replaceAll('_', ' ') : 'Anime';
+    const date = Date.parse(recommendation.created_at);
+    const sent = Number.isFinite(date) ? new Date(date).toLocaleDateString() : 'Recently';
+    const sender = recommendation.sender_username ? `@${recommendation.sender_username}` : 'A ListR friend';
+    return `<article class="anime-card recommendation-card" data-recommendation-id="${escapeHtml(recommendation.recommendation_id)}"><div class="cover-wrap">${imageMarkup(media, title)}<span class="cover-badge"><i></i>RECOMMENDED</span></div><div class="card-body"><h3 class="card-title" title="${escapeHtml(title)}">${escapeHtml(title)}</h3><p class="card-subtitle">${escapeHtml(format)} · AniList #${escapeHtml(id)}</p><p class="recommend-sender">From ${escapeHtml(sender)}</p><p class="recommendation-date">Received ${escapeHtml(sent)}</p><div class="recommend-actions"><button class="button button-primary" type="button" data-recommendation-action="accept" data-id="${escapeHtml(recommendation.recommendation_id)}">Add to Interested</button><button class="button button-quiet" type="button" data-recommendation-action="dismiss" data-id="${escapeHtml(recommendation.recommendation_id)}">Dismiss</button></div></div></article>`;
+  }).join('');
+  $('#recommendations-empty').hidden = hasRecommendations || !currentUser;
+  if (!hasRecommendations) container.innerHTML = '';
+}
+
+function renderRecommendationSearchResults() {
+  const container = $('#recommend-search-results');
+  if (!recommendationSearchResults.length) { container.innerHTML = ''; return; }
+  container.innerHTML = recommendationSearchResults.map((media) => {
+    const id = String(media.id);
+    const title = getTitle(media.title, id);
+    const format = media.format ? String(media.format).replaceAll('_', ' ') : 'Anime';
+    return `<div class="recommend-result">${imageMarkup(media, title)}<div class="recommend-result-copy"><strong title="${escapeHtml(title)}">${escapeHtml(title)}</strong><small>${escapeHtml(format)} · AniList #${escapeHtml(id)}</small></div><button class="button button-primary" type="button" data-recommendation-search-action="send" data-id="${escapeHtml(id)}">Send</button></div>`;
+  }).join('');
+}
+
+async function refreshRecommendationBadge(userId = currentUser?.id) {
+  if (!userId || !supabaseClient || !cloudLibraryReady || currentUser?.id !== String(userId)) return;
+  const uid = String(userId);
+  try {
+    const results = await listReceivedRecommendationsV2(supabaseClient);
+    if (currentUser?.id !== uid) return;
+    receivedRecommendations = results;
+    updateRecommendationBadge();
+  } catch {
+    // Social schema is an optional additive migration; never block the anime tracker.
+    if (currentUser?.id === uid) {
+      receivedRecommendations = [];
+      updateRecommendationBadge();
+    }
+  }
+}
+
+async function refreshSocialLists(userId) {
+  const uid = String(userId);
+  const [friendResult, recommendationResult] = await Promise.allSettled([
+    listFriendsV2(supabaseClient),
+    listReceivedRecommendationsV2(supabaseClient),
+  ]);
+  if (currentUser?.id !== uid) return;
+  if (friendResult.status === 'fulfilled') {
+    friends = friendResult.value;
+    renderFriendRows();
+  }
+  if (recommendationResult.status === 'fulfilled') {
+    receivedRecommendations = recommendationResult.value;
+    updateRecommendationBadge();
+  }
+  if (activeView === 'friends') {
+    if (friendResult.status === 'fulfilled') setFriendsMessage('Search a username to find someone, or open a friend profile to see stats and send an anime recommendation.');
+    else setFriendsMessage(socialErrorMessageV2(friendResult.reason), 'error');
+  }
+  if (activeView === 'recommendations') {
+    if (recommendationResult.status === 'fulfilled') setRecommendationsMessage(receivedRecommendations.length ? `${receivedRecommendations.length} pending recommendation${receivedRecommendations.length === 1 ? '' : 's'} from your friends.` : 'No pending recommendations right now.');
+    else setRecommendationsMessage(socialErrorMessageV2(recommendationResult.reason), 'error');
+  }
+}
+
+async function initializeSocialForUser(userId, requestedView = activeView) {
+  if (!userId) {
+    const message = 'Sign in to ListR to use Friends and Recommendations. Your guest library remains separate.';
+    if (requestedView === 'friends') setFriendsMessage(message, 'error');
+    if (requestedView === 'recommendations') setRecommendationsMessage(message, 'error');
+    if (!$('#auth-dialog').open) openAuthDialog('login');
+    return;
+  }
+  const uid = String(userId);
+  if (currentUser?.id !== uid) return;
+  if (!cloudLibraryReady) {
+    if (requestedView === 'friends') setFriendsMessage('Wait for your private cloud library to finish loading.', 'error');
+    if (requestedView === 'recommendations') setRecommendationsMessage('Wait for your private cloud library to finish loading.', 'error');
+    return;
+  }
+  if (socialLoads.has(uid)) return socialLoads.get(uid);
+  const task = (async () => {
+    try {
+      const profile = await getMyProfileV2(supabaseClient);
+      if (currentUser?.id !== uid) return;
+      socialUserId = uid;
+      socialProfile = profile;
+      $('#edit-username').hidden = Boolean(profile?.username);
+      if (!profile?.username) {
+        if (requestedView === 'friends') setFriendsMessage('Choose a unique username before using Friends.', 'error');
+        else setRecommendationsMessage('Choose a unique username before using Friends and Recommendations.', 'error');
+        openUsernameDialog();
+        return;
+      }
+      await refreshSocialLists(uid);
+    } catch (error) {
+      if (currentUser?.id !== uid) return;
+      socialUserId = uid;
+      if (requestedView === 'friends') setFriendsMessage(socialErrorMessageV2(error), 'error');
+      else setRecommendationsMessage(socialErrorMessageV2(error), 'error');
+    }
+  })().finally(() => {
+    if (socialLoads.get(uid) === task) socialLoads.delete(uid);
+  });
+  socialLoads.set(uid, task);
+  return task;
+}
+
+function openFriendProfile(person) {
+  selectedFriend = {
+    userId: String(person.userId || person.user_id || person.friend_user_id || ''),
+    username: String(person.username || ''),
+    relationship: person.relationship || person.status || 'none',
+    friendshipId: person.friendshipId || person.friendship_id || '',
+  };
+  const accepted = selectedFriend.relationship === 'accepted';
+  const pending = selectedFriend.relationship === 'pending';
+  $('#friend-profile-username').textContent = selectedFriend.username ? `@${selectedFriend.username}` : 'ListR user';
+  $('#add-profile-friend').hidden = accepted || pending;
+  $('#view-friend-stats').hidden = !accepted;
+  $('#recommend-to-friend').hidden = !accepted;
+  $('#unfriend-user').hidden = !accepted;
+  $('#friend-stats').hidden = true;
+  $('#friend-stats').innerHTML = '';
+  $('#friend-profile-message').textContent = accepted ? 'Stats show counts and estimated time only; private anime titles and email are never shared.' : (pending ? 'Friend-request details show usernames only.' : 'Profile previews are limited to usernames. Send a friend request to unlock stats and recommendations.');
+  const dialog = $('#friend-profile-dialog');
+  if (!dialog.open) dialog.showModal();
+}
+
+function renderFriendStats(stats) {
+  const total = Number(stats?.total_anime) || 0;
+  const watching = Number(stats?.watching) || 0;
+  const completed = Number(stats?.completed) || 0;
+  const interested = Number(stats?.interested) || 0;
+  const episodes = Number(stats?.watched_episodes) || 0;
+  const minutes = Number(stats?.watched_minutes) || 0;
+  $('#friend-stats').innerHTML = `<div class="friend-stat"><strong>${total.toLocaleString()}</strong><span>Total anime · Interested included</span></div><div class="friend-stat"><strong>${watching.toLocaleString()}</strong><span>Watching</span></div><div class="friend-stat"><strong>${completed.toLocaleString()}</strong><span>Completed</span></div><div class="friend-stat"><strong>${interested.toLocaleString()}</strong><span>Interested</span></div><div class="friend-stat"><strong>${episodes.toLocaleString()}</strong><span>Episodes watched · Interested excluded</span></div><div class="friend-stat friend-stat-wide"><strong>${escapeHtml(formatHours(minutes))} hrs</strong><span>Estimated watched time · Interested excluded</span></div>`;
+  $('#friend-stats').hidden = false;
+}
+
+async function loadFriendStats() {
+  if (!selectedFriend || selectedFriend.relationship !== 'accepted' || !currentUser) return;
+  const uid = currentUser.id;
+  $('#view-friend-stats').disabled = true;
+  $('#friend-profile-message').textContent = 'Loading friend stats…';
+  try {
+    const stats = await getFriendStatsV2(supabaseClient, selectedFriend.userId);
+    if (currentUser?.id !== uid || !selectedFriend) return;
+    renderFriendStats(stats);
+    $('#friend-profile-message').textContent = 'Stats only. Your friend’s private anime titles, account email, and AniList connection stay private.';
+  } catch (error) {
+    if (currentUser?.id === uid) $('#friend-profile-message').textContent = socialErrorMessageV2(error);
+  } finally { $('#view-friend-stats').disabled = false; }
+}
+
+async function submitFriendSearch(event) {
+  event.preventDefault();
+  if (!currentUser || !socialProfile?.username) return;
+  const uid = currentUser.id;
+  const query = normalizeUsernameV2($('#friend-query').value);
+  if (query.length < 3) { setFriendsMessage('Enter at least 3 username characters to search.', 'error'); return; }
+  const button = $('#friend-search-form button[type="submit"]');
+  button.disabled = true;
+  setFriendsMessage('Searching ListR usernames…');
+  try {
+    const results = await searchListRUsersV2(supabaseClient, query);
+    if (currentUser?.id !== uid) return;
+    friendSearchResults = results;
+    renderFriendSearchResults();
+    setFriendsMessage(friendSearchResults.length ? `${friendSearchResults.length} username match${friendSearchResults.length === 1 ? '' : 'es'}.` : 'No matching usernames found.');
+  } catch (error) { if (currentUser?.id === uid) setFriendsMessage(socialErrorMessageV2(error), 'error'); }
+  finally { button.disabled = false; }
+}
+
+async function requestFriend(targetId) {
+  if (!currentUser || !targetId || socialBusy) return;
+  const uid = currentUser.id;
+  socialBusy = true;
+  try {
+    await sendFriendRequestV2(supabaseClient, targetId);
+    if (currentUser?.id !== uid) return;
+    if (selectedFriend?.userId === String(targetId)) {
+      selectedFriend.relationship = 'pending';
+      $('#add-profile-friend').hidden = true;
+      $('#friend-profile-message').textContent = 'Friend request sent. Profile previews remain username-only until the request is accepted.';
+    }
+    setFriendsMessage('Friend request sent.');
+    await refreshSocialLists(uid);
+    if (currentUser?.id !== uid) return;
+    if ($('#friend-query').value.trim()) {
+      friendSearchResults = await searchListRUsersV2(supabaseClient, $('#friend-query').value);
+      if (currentUser?.id !== uid) return;
+      renderFriendSearchResults();
+    }
+  } catch (error) { if (currentUser?.id === uid) setFriendsMessage(socialErrorMessageV2(error), 'error'); }
+  finally { socialBusy = false; }
+}
+
+async function respondToFriendRequest(friendshipId, accept) {
+  if (!currentUser || !friendshipId || socialBusy) return;
+  const uid = currentUser.id;
+  socialBusy = true;
+  try {
+    await respondFriendRequestV2(supabaseClient, friendshipId, accept);
+    if (currentUser?.id !== uid) return;
+    setFriendsMessage(accept ? 'Friend request accepted.' : 'Friend request declined.');
+    await refreshSocialLists(uid);
+  } catch (error) { setFriendsMessage(socialErrorMessageV2(error), 'error'); }
+  finally { socialBusy = false; }
+}
+
+async function cancelFriendRequest(friendshipId) {
+  if (!currentUser || !friendshipId || socialBusy) return;
+  const uid = currentUser.id;
+  socialBusy = true;
+  try {
+    await unfriendV2(supabaseClient, friendshipId);
+    if (currentUser?.id !== uid) return;
+    setFriendsMessage('Friend request cancelled.');
+    await refreshSocialLists(uid);
+  } catch (error) { setFriendsMessage(socialErrorMessageV2(error), 'error'); }
+  finally { socialBusy = false; }
+}
+
+async function removeFriend(friendshipId) {
+  if (!currentUser || !friendshipId || socialBusy) return;
+  const username = selectedFriend?.username || 'this user';
+  if (!window.confirm(`Unfriend @${username}? You will no longer see each other’s stats or send recommendations.`)) return;
+  const uid = currentUser.id;
+  socialBusy = true;
+  try {
+    await unfriendV2(supabaseClient, friendshipId);
+    if (currentUser?.id !== uid) return;
+    $('#friend-profile-dialog').close();
+    selectedFriend = null;
+    setFriendsMessage(`Unfriended @${username}.`);
+    await refreshSocialLists(uid);
+  } catch (error) { if (currentUser?.id === uid) $('#friend-profile-message').textContent = socialErrorMessageV2(error); }
+  finally { socialBusy = false; }
+}
+
+function handleSocialListClick(event) {
+  const button = event.target.closest('[data-social-action]');
+  if (!button || socialBusy) return;
+  const action = button.dataset.socialAction;
+  if (action === 'profile') {
+    const found = friends.find((friend) => String(friend.friend_user_id) === button.dataset.userId);
+    openFriendProfile({
+      userId: button.dataset.userId,
+      username: button.dataset.username,
+      relationship: button.dataset.relationship || found?.status || 'none',
+      friendshipId: button.dataset.friendshipId || found?.friendship_id,
+    });
+  } else if (action === 'send-request') void requestFriend(button.dataset.userId);
+  else if (action === 'accept-request') void respondToFriendRequest(button.dataset.friendshipId, true);
+  else if (action === 'decline-request') void respondToFriendRequest(button.dataset.friendshipId, false);
+  else if (action === 'cancel-request') void cancelFriendRequest(button.dataset.friendshipId);
+}
+
+async function openRecommendationComposer() {
+  if (!selectedFriend || selectedFriend.relationship !== 'accepted') return;
+  recommendationTarget = selectedFriend;
+  recommendationSearchResults = [];
+  renderRecommendationSearchResults();
+  $('#recommend-recipient').textContent = `Send to @${selectedFriend.username}. Only an AniList-verified anime can be recommended.`;
+  $('#recommend-search-message').textContent = 'Choose an anime from the AniList search results.';
+  $('#recommend-query').value = '';
+  $('#recommend-anime-dialog').showModal();
+  $('#recommend-query').focus();
+}
+
+async function submitRecommendationSearch(event) {
+  event.preventDefault();
+  const query = $('#recommend-query').value.trim();
+  if (query.length < 2) { $('#recommend-search-message').textContent = 'Enter at least two characters to search AniList.'; return; }
+  recommendationSearchController?.abort();
+  recommendationSearchController = new AbortController();
+  const button = $('#recommend-search-form button[type="submit"]');
+  button.disabled = true;
+  recommendationSearchResults = [];
+  renderRecommendationSearchResults();
+  $('#recommend-search-message').textContent = 'Searching the AniList anime catalogue…';
+  try {
+    const found = await searchAnime(query, recommendationSearchController.signal);
+    if (recommendationSearchController.signal.aborted) return;
+    recommendationSearchResults = [...new Map(found.filter((media) => media?.id != null).map((media) => [String(media.id), media])).values()];
+    renderRecommendationSearchResults();
+    $('#recommend-search-message').textContent = recommendationSearchResults.length ? `${recommendationSearchResults.length} AniList result${recommendationSearchResults.length === 1 ? '' : 's'}.` : 'No anime found. Try another title.';
+  } catch (error) {
+    if (error.name !== 'AbortError') $('#recommend-search-message').textContent = error.message || 'AniList search failed.';
+  } finally { button.disabled = false; }
+}
+
+async function sendAnimeRecommendation(media) {
+  if (!currentUser || !cloudLibraryReady || !recommendationTarget) return;
+  const uid = currentUser.id;
+  const mediaId = Number(media?.id);
+  if (!Number.isSafeInteger(mediaId) || mediaId < 1) return;
+  const button = $(`[data-recommendation-search-action="send"][data-id="${CSS.escape(String(mediaId))}"]`);
+  if (button) button.disabled = true;
+  $('#recommend-search-message').textContent = 'Verifying the anime with AniList and sending…';
+  try {
+    const result = await invokeAniListActionV2(supabaseClient, 'send-recommendation', {
+      recipientId: recommendationTarget.userId,
+      mediaId,
+    });
+    if (currentUser?.id !== uid) return;
+    $('#recommend-anime-dialog').close();
+    $('#friend-profile-dialog').close();
+    showToast(`Recommendation sent to @${recommendationTarget.username}.`);
+    recommendationTarget = null;
+  } catch (error) {
+    $('#recommend-search-message').textContent = safeAniListErrorMessageV2(error);
+  } finally { if (button) button.disabled = false; }
+}
+
+function applyRecommendationLocally(recommendation, category = 'interested') {
+  const id = String(recommendation.anilist_media_id);
+  const existing = entries.get(id);
+  if (existing) entries.set(id, { ...existing, category });
+  else entries.set(id, createEntry(recommendation.anime_metadata, category));
+  if (currentUser?.id && cloudLibraryReady) writeCloudCache(storage, currentUser.id, [...entries.values()]);
+  render();
+}
+
+async function acceptRecommendation(recommendationId) {
+  if (!currentUser || !cloudLibraryReady || socialBusy) return;
+  const recommendation = receivedRecommendations.find((item) => String(item.recommendation_id) === String(recommendationId));
+  if (!recommendation) return;
+  const uid = currentUser.id;
+  try {
+    const status = await invokeAniListActionV2(supabaseClient, 'status');
+    if (currentUser?.id !== uid) return;
+    if (status.state !== 'connected') {
+      updateAniListState(status.state === 'error' ? 'error' : 'not_connected', {
+        message: status.message || 'Connect AniList before accepting a recommendation to Planning.',
+        messageType: 'error',
+      });
+      setRecommendationsMessage('Connect AniList first. Add to Interested will also add the anime to AniList Planning.', 'error');
+      if (window.confirm('Connect or reconnect AniList now? The recommendation will remain here until both ListR and AniList have confirmed acceptance.')) await connectAniList();
+      return;
+    }
+  } catch (error) {
+    setRecommendationsMessage(safeAniListErrorMessageV2(error), 'error');
+    return;
+  }
+
+  socialBusy = true;
+  const card = $(`[data-recommendation-id="${CSS.escape(String(recommendationId))}"]`);
+  const button = card?.querySelector('[data-recommendation-action="accept"]');
+  if (button) { button.disabled = true; button.textContent = 'Adding…'; }
+  setRecommendationsMessage('Saving the anime to ListR and then confirming its AniList Planning status…');
+  try {
+    const result = await invokeAniListActionV2(supabaseClient, 'accept-recommendation', { recommendationId: String(recommendationId) });
+    if (currentUser?.id !== uid) return;
+    if (!result || result.state !== 'accepted') throw new Error('AniList and ListR did not both confirm this recommendation. It remains available to retry.');
+    if (!result.alreadyInListR || entries.has(String(recommendation.anilist_media_id))) applyRecommendationLocally(recommendation, 'interested');
+    else {
+      try {
+        const remote = await loadUserEntries(supabaseClient, uid);
+        if (currentUser?.id === uid) {
+          entries.clear();
+          for (const entry of remote) entries.set(String(entry.id), entry);
+          writeCloudCache(storage, uid, remote);
+          render();
+        }
+      } catch { /* the cloud write already succeeded; keep the existing local view */ }
+    }
+    receivedRecommendations = receivedRecommendations.filter((item) => String(item.recommendation_id) !== String(recommendationId));
+    renderRecommendations();
+    updateRecommendationBadge();
+    const existingNote = result.alreadyInListR && result.existingCategory !== 'interested'
+      ? ` Its existing ListR entry was moved from ${categoryName(result.existingCategory || 'the previous category')} to Interested; its watched count and metadata were preserved.`
+      : result.alreadyInListR
+        ? ' It was already in ListR Interested, so no duplicate was created.'
+      : ' It is now in your ListR Interested list.';
+    const planningNote = result.anilistState === 'already_planning' ? ' It was already in AniList Planning.' : ' It was added to AniList Planning.';
+    setRecommendationsMessage(`Recommendation accepted.${existingNote}${planningNote}`);
+    showToast('Recommendation accepted. ListR and AniList confirmed the update.');
+  } catch (error) {
+    if (currentUser?.id !== uid) return;
+    if (['recommendation_anilist_write_failed', 'recommendation_finalize_failed'].includes(error?.code)) {
+      applyRecommendationLocally(recommendation, 'interested');
+    }
+    setRecommendationsMessage(safeAniListErrorMessageV2(error), 'error');
+  } finally {
+    socialBusy = false;
+    if (currentUser?.id === uid) renderRecommendations();
+  }
+}
+
+async function dismissRecommendation(recommendationId) {
+  if (!currentUser || socialBusy) return;
+  const uid = currentUser.id;
+  socialBusy = true;
+  try {
+    await dismissRecommendationV2(supabaseClient, recommendationId);
+    if (currentUser?.id !== uid) return;
+    receivedRecommendations = receivedRecommendations.filter((item) => String(item.recommendation_id) !== String(recommendationId));
+    renderRecommendations();
+    updateRecommendationBadge();
+    setRecommendationsMessage('Recommendation dismissed.');
+  } catch (error) { if (currentUser?.id === uid) setRecommendationsMessage(socialErrorMessageV2(error), 'error'); }
+  finally { socialBusy = false; }
+}
+
+async function refreshCurrentSocialPage() {
+  if (!currentUser || !cloudLibraryReady) return;
+  const uid = currentUser.id;
+  if (activeView === 'friends' || activeView === 'recommendations') await initializeSocialForUser(uid, activeView);
+  else await refreshRecommendationBadge(uid);
+}
+
 async function initializeAccount() {
   if (!supabaseClient) { enterGuest('Supabase could not be loaded. Guest mode is available; sign-in needs the account service.'); return; }
   try {
@@ -1034,16 +1573,73 @@ $('#dismiss-import').addEventListener('click', () => { if (currentUser) remember
 $('#connect-anilist').addEventListener('click', connectAniList);
 $('#sync-anilist').addEventListener('click', () => { if (currentUser) void runAniListSync(currentUser.id); });
 $('#disconnect-anilist').addEventListener('click', disconnectAniList);
+$('#username-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (!currentUser || !cloudLibraryReady) return;
+  const uid = currentUser.id;
+  const username = $('#profile-username').value;
+  const submit = $('#username-submit');
+  submit.disabled = true;
+  $('#username-message').textContent = 'Saving your username…';
+  try {
+    socialProfile = await setUsernameV2(supabaseClient, username);
+    if (currentUser?.id !== uid) return;
+    socialUserId = uid;
+    $('#edit-username').hidden = true;
+    $('#username-dialog').close();
+    await refreshSocialLists(uid);
+    if (currentUser?.id !== uid) return;
+    showToast(`Your ListR username is @${socialProfile.username}.`);
+  } catch (error) {
+    if (currentUser?.id !== uid) return;
+    const message = error?.code === '23505'
+      ? 'That username is already taken. Choose another.'
+      : socialErrorMessageV2(error);
+    $('#username-message').textContent = message;
+    $('#username-message').className = 'auth-message is-error';
+  } finally { submit.disabled = false; }
+});
+$('#close-username').addEventListener('click', () => $('#username-dialog').close());
+$('#edit-username').addEventListener('click', openUsernameDialog);
+$('#friend-search-form').addEventListener('submit', submitFriendSearch);
+$('#incoming-friends').addEventListener('click', handleSocialListClick);
+$('#friends-list').addEventListener('click', handleSocialListClick);
+$('#friend-search-results').addEventListener('click', handleSocialListClick);
+$('#refresh-friends').addEventListener('click', () => { if (currentUser) void initializeSocialForUser(currentUser.id, 'friends'); });
+$('#close-friend-profile').addEventListener('click', () => $('#friend-profile-dialog').close());
+$('#add-profile-friend').addEventListener('click', () => { if (selectedFriend) void requestFriend(selectedFriend.userId); });
+$('#view-friend-stats').addEventListener('click', loadFriendStats);
+$('#recommend-to-friend').addEventListener('click', openRecommendationComposer);
+$('#unfriend-user').addEventListener('click', () => { if (selectedFriend?.friendshipId) void removeFriend(selectedFriend.friendshipId); });
+$('#recommend-search-form').addEventListener('submit', submitRecommendationSearch);
+$('#close-recommend-anime').addEventListener('click', () => { recommendationSearchController?.abort(); $('#recommend-anime-dialog').close(); });
+$('#recommend-search-results').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-recommendation-search-action="send"]');
+  if (!button) return;
+  const media = recommendationSearchResults.find((item) => String(item.id) === button.dataset.id);
+  if (media) void sendAnimeRecommendation(media);
+});
+$('#recommendations-list').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-recommendation-action]');
+  if (!button) return;
+  if (button.dataset.recommendationAction === 'accept') void acceptRecommendation(button.dataset.id);
+  if (button.dataset.recommendationAction === 'dismiss') void dismissRecommendation(button.dataset.id);
+});
+$('#refresh-recommendations').addEventListener('click', () => { if (currentUser) void initializeSocialForUser(currentUser.id, 'recommendations'); });
 window.addEventListener('online', () => {
   if (!currentUser) return;
   if (!cloudLibraryReady) void activateUser(currentUser);
   else {
     const userId = currentUser.id;
-    void flushCloudQueue(userId).then(() => initializeAniListForUser(userId, { forceStatus: true }));
+    void flushCloudQueue(userId).then(() => initializeAniListForUser(userId, { forceStatus: true })).then(() => refreshRecommendationBadge(userId));
+    if (activeView === 'friends' || activeView === 'recommendations') void initializeSocialForUser(userId, activeView);
   }
 });
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && currentUser) void maybeAutoSyncAniList(currentUser.id);
+  if (document.visibilityState === 'visible' && currentUser) {
+    void maybeAutoSyncAniList(currentUser.id);
+    void refreshRecommendationBadge(currentUser.id);
+  }
 });
 
 $$('.nav-link').forEach((button) => button.addEventListener('click', () => setView(button.dataset.view)));
@@ -1114,6 +1710,7 @@ window.addEventListener('hashchange', () => {
   const hash = window.location.hash.replace('#', '');
   if (hash === 'add') setView('search');
   else if (hash === 'stats') setView('stats');
+  else if (hash === 'friends' || hash === 'recommendations') setView(hash);
   else if (CATEGORIES[hash]) setView(hash);
 });
 
@@ -1121,6 +1718,7 @@ window.addEventListener('hashchange', () => {
 const initialHash = window.location.hash.replace('#', '');
 if (initialHash === 'add') activeView = 'search';
 else if (initialHash === 'stats') activeView = 'stats';
+else if (initialHash === 'friends' || initialHash === 'recommendations') activeView = initialHash;
 else if (CATEGORIES[initialHash]) activeView = initialHash;
 const authCallbackInUrl = /(?:access_token|code|error|error_description)=/.test(`${window.location.search}&${window.location.hash}`);
 setView(activeView, { updateHash: !authCallbackInUrl });
