@@ -47,9 +47,10 @@ function mockClient(handler) {
   };
 }
 
-test('usernames normalize case/whitespace and enforce safe 3–20 character format', () => {
-  assert.deepEqual(validateUsernameV2('  Anime_Fan7 '), { ok: true, username: 'anime_fan7', message: '' });
-  for (const bad of ['', 'ab', '_start', 'with space', 'has-dash', 'x'.repeat(21)]) assert.equal(validateUsernameV2(bad).ok, false, bad);
+test('usernames normalize case/whitespace and allow special characters within 3–20 characters', () => {
+  assert.deepEqual(validateUsernameV2('  Anime_Fan7! '), { ok: true, username: 'anime_fan7!', message: '' });
+  assert.deepEqual(validateUsernameV2('@My.Name-2'), { ok: true, username: '@my.name-2', message: '' });
+  for (const bad of ['', 'ab', 'with space', 'x'.repeat(21), 'line\nbreak']) assert.equal(validateUsernameV2(bad).ok, false, bad);
 });
 
 test('profile RPC returns only own user_id and canonical username', async () => {
@@ -64,7 +65,8 @@ test('username creation always normalizes before the unique database RPC', async
   assert.deepEqual(client.calls[0], { name: 'set_list_r_profile_username_v2', args: { p_username: 'myname_2' } });
   const duplicate = mockClient(() => ({ data: null, error: { code: '23505', message: 'duplicate key' } }));
   await assert.rejects(setUsernameV2(duplicate, 'taken'), { code: '23505' });
-  await assert.rejects(setUsernameV2(client, 'bad-name'), { code: 'invalid_username' });
+  assert.equal((await setUsernameV2(client, '  Cool.Name-2! ')).username, 'cool.name-2!');
+  await assert.rejects(setUsernameV2(client, 'bad name'), { code: 'invalid_username' });
 });
 
 test('user search is username-prefix-only and requests no email or private profile fields', async () => {
