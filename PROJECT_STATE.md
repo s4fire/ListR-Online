@@ -56,6 +56,14 @@ Last updated: 2026-10-02
 - Supabase's current documentation recommends relying on the automatic client initialization and onAuthStateChange rather than manually awaiting initialize() for normal browser startup. See the Supabase auth initialization/getSession documentation.
 - This checkpoint should be verified on the production Pages site before further auth changes.
 
+## Recommendation accept-and-remind checkpoint
+- Recommendation cards now use `Accept` and `Deny` instead of automatically adding the anime.
+- `Accept` creates a per-account local reminder in the bottom-right with an `Add anime` action. That action opens the normal AniList search flow prefilled for the recommended title and defaults the category to Interested.
+- The reminder stays visible until the recommended AniList media ID appears in the user's ListR library. Once detected, the reminder is cleared and the recommendation is dismissed server-side.
+- `Deny` keeps the existing dismiss behavior.
+- Reminder state is persisted per signed-in user in browser localStorage when available, so an accepted recommendation remains actionable after refresh on the same browser.
+- Implementation commits: e977d9ccc469a95084dce190b969476873e88c0b, ab4fa4d61ff4103f0fd31fdcc286cb7f47c39db3, c7aeb783177849418883d0df115324d4d637a8b3.
+
 ## Current planned work
 1. Confirm the Supabase Authentication URL Configuration for production.
 2. Manually verify the production auth flow with a newly generated confirmation email.
