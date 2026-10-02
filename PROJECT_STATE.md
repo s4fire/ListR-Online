@@ -62,22 +62,13 @@ Last updated: 2026-10-02
 - AniList Edge Function configuration diagnostics now identify which server-side configuration value is missing without revealing its value.
 - AniList recommendation finalization now accepts both scalar and one-row RPC return shapes.
 - `supabase/functions/anilist-account-v2/index.ts` is marked legacy/inactive; `anilist-account-v9` is the production source.
+- Recommendation acceptance is now strictly ListR-only: the UI no longer offers an AniList-writing option, and the production Edge Function no longer writes recommendation acceptances to AniList.
 - The production v9 Edge Function source is present in GitHub so deployed behavior has a canonical repository source.
 - Text to List remains intentionally paused; `text-import.js` is retained only as source/history and `text-list.js` is inactive.
 
-## Text to List requirements (future feature)
-- Input can contain standalone anime names, in which case the user chooses the category and normal defaults apply:
-  - Watching: 0 watched
-  - Completed: known total if available
-  - Interested: no watched count
-- Input can contain category headings such as Watching / Completed / Interested.
-- When category headings are present, watched counts for Watching/Completed must be explicitly provided; do not default to 0 or total. Missing counts block import until manually filled.
-- Interested under a category heading needs no watched count.
-- Review screen should show title, AniList match, category, watched, total, duplicate status, and warnings.
-- User can edit match/category/count before confirmation.
-- Nothing is saved before confirmation.
-- Duplicate detection is by AniList media ID.
-- Parser should support numbered/bullet lists, extra whitespace, common formats, and simple episode annotations without being over-aggressive.
+## Text to List status
+- Text to List is intentionally paused and inactive until the core ListR tracker and social features are stable.
+- `anime-tracker/text-list.js` remains as an inactive placeholder; `text-import.js` is retained only as source/history.
 
 ## Working method across chats
 - GitHub repo is the code source of truth.
