@@ -283,7 +283,7 @@ async function actionCompleteSync(admin: any, userId: string) {
   return { state: 'connected', lastSyncedAt }
 }
 
-async function actionSendRecommendation(admin: any, userId: string, body: Record<string, unknown>) {
+async function actionSendRecommendation(userClient: any, admin: any, userId: string, body: Record<string, unknown>) {
   const recipientId = requireString(body.recipientId, 'recipient ID', 36, 36)
   const mediaId = Number(body.mediaId)
   if (!/^([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/iu.test(recipientId)
@@ -300,7 +300,7 @@ async function actionSendRecommendation(admin: any, userId: string, body: Record
     title: media.title,
   }
 
-  const { data, error } = await admin.rpc('create_list_r_recommendation_v2', {
+  const { data, error } = await userClient.rpc('create_list_r_recommendation_v2', {
     p_recipient_id: recipientId,
     p_media_id: mediaId,
     p_metadata: metadata,
@@ -530,7 +530,7 @@ export default {
         case 'disconnect': result = await actionDisconnect(admin, userId); break
         case 'sync': result = await actionSync(admin, userId); break
         case 'sync-complete': result = await actionCompleteSync(admin, userId); break
-        case 'send-recommendation': result = await actionSendRecommendation(admin, userId, body); break
+        case 'send-recommendation': result = await actionSendRecommendation(ctx.supabase, admin, userId, body); break
         case 'accept-recommendation': result = await actionAcceptRecommendation(admin, userId, body); break
         default: return json({ error: 'unknown_action', message: 'Unknown AniList action.' }, 400)
       }
