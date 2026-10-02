@@ -3,6 +3,7 @@ import { refreshAnimeByIds, searchAnime } from './api.js';
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from './supabase-config.js';
 import { enqueueCloudOperation, loadUserEntries, mergePendingOperations, readCloudCache, readOutbox, removeCompletedOperation, removeUserEntry, saveUserEntry, writeCloudCache } from './cloud-store.js';
 import { validateAuthFields } from './auth-validation.js';
+import { canUseAniListV2, clearAniListOAuthAttemptV2, invokeAniListActionV2, isPotentialAniListOAuthReturnV2, readAniListCallbackV2, readAniListOAuthAttemptV2, removeAniListCallbackParamsV2, safeAniListErrorMessageV2, shouldAutoSyncAniListV2, storeAniListOAuthAttemptV2, validateProgressResponseV2 } from './anilist-integration-v2.js';
 
 // ----------------------------- App state -----------------------------------
 const STORE_KEY = 'afterglow-anime-tracker-v1';
@@ -11,11 +12,14 @@ function browserStorage() {
   try { return window.localStorage; } catch { return null; }
 }
 const storage = browserStorage();
+// AniList's authorization-code return also uses ?code=. Do not let Supabase Auth's
+// PKCE URL detector attempt to exchange the AniList code as a ListR auth code.
+const anilistOAuthReturnInUrl = isPotentialAniListOAuthReturnV2(window.location);
 let supabaseClient = null;
 try {
   if (window.supabase?.createClient && SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY) {
     supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: !anilistOAuthReturnInUrl }
     });
   }
 } catch {
@@ -30,6 +34,16 @@ let activeView = 'watching';
 let searchResults = [];
 let searchController = null;
 let toastTimer = null;
+let anilistConnectionState = 'not_connected';
+let anilistUsername = '';
+let anilistLastSyncedAt = null;
+let anilistSyncMessage = 'Your AniList account remains separate from your ListR sign-in.';
+let anilistSyncMessageType = '';
+let anilistSyncing = false;
+let anilistLastRequestAt = 0;
+let anilistSyncEpoch = 0;
+let anilistStatusUserId = null;
+const activeAniListStatusLoads = new Map();
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -40,13 +54,6 @@ const collectionGrid = $('#collection-grid');
 const collectionEmpty = $('#collection-empty');
 const searchResultsEl = $('#search-results');
 const searchMessage = $('#search-message');
-
-const PRODUCTION_AUTH_REDIRECT = 'https://s4fire.github.io/ListR-Online/';
-
-function getAuthRedirectUrl() {
-  if (window.location.hostname === 's4fire.github.io') return PRODUCTION_AUTH_REDIRECT;
-  return new URL(window.location.pathname, window.location.origin).href;
-}
 
 // ----------------------------- Storage -------------------------------------
 function persist() {
@@ -314,6 +321,56 @@ function setAppReady() {
   $('#app-loading').hidden = true;
 }
 
+function setAniListMessage(message, type = '') {
+  anilistSyncMessage = String(message || '');
+  anilistSyncMessageType = type;
+  const element = $('#anilist-sync-message');
+  element.textContent = anilistSyncMessage;
+  element.className = `anilist-sync-message ${type ? `is-${type}` : ''}`.trim();
+}
+
+function renderAniListPanel() {
+  const panel = $('#anilist-panel');
+  const signedIn = Boolean(currentUser);
+  panel.hidden = !signedIn;
+  if (!signedIn) return;
+
+  const labels = { not_connected: 'Not Connected', connecting: 'Connecting', connected: 'Connected', error: 'Error' };
+  const state = labels[anilistConnectionState] ? anilistConnectionState : 'error';
+  const stateElement = $('#anilist-connection-state');
+  stateElement.textContent = labels[state];
+  stateElement.className = `anilist-state ${state === 'not_connected' ? 'is-idle' : `is-${state}`}`;
+  $('#anilist-account-name').textContent = anilistUsername
+    ? `Connected as ${anilistUsername}. ListR will sync only this signed-in account’s existing anime.`
+    : 'Connect your AniList account to sync watch progress. This does not replace your ListR sign-in.';
+  const connect = $('#connect-anilist');
+  connect.hidden = state === 'connected';
+  connect.disabled = state === 'connecting' || !cloudLibraryReady || navigator.onLine === false;
+  connect.textContent = state === 'connecting' ? 'Connecting…' : (state === 'error' ? 'Reconnect AniList' : 'Connect AniList');
+  $('#sync-anilist').hidden = state !== 'connected';
+  $('#sync-anilist').disabled = anilistSyncing || !cloudLibraryReady || navigator.onLine === false;
+  $('#sync-anilist').textContent = anilistSyncing ? 'Syncing…' : 'Sync with AniList';
+  $('#disconnect-anilist').hidden = state !== 'connected';
+  $('#disconnect-anilist').disabled = anilistSyncing;
+  $('#anilist-sync-message').textContent = anilistSyncMessage;
+  $('#anilist-sync-message').className = `anilist-sync-message ${anilistSyncMessageType ? `is-${anilistSyncMessageType}` : ''}`.trim();
+  $('#anilist-sync-progress').hidden = !anilistSyncing;
+  $('#anilist-last-sync').textContent = anilistLastSyncedAt && Number.isFinite(Date.parse(anilistLastSyncedAt))
+    ? `Last successful sync: ${new Date(anilistLastSyncedAt).toLocaleString()}`
+    : 'Last successful sync: never';
+}
+
+function resetAniListPanel() {
+  anilistConnectionState = 'not_connected';
+  anilistUsername = '';
+  anilistLastSyncedAt = null;
+  anilistSyncing = false;
+  anilistLastRequestAt = 0;
+  anilistSyncEpoch += 1;
+  anilistStatusUserId = null;
+  setAniListMessage('Your AniList account remains separate from your ListR sign-in.');
+}
+
 function updateAccountBar() {
   const signedIn = Boolean(currentUser);
   $('#guest-actions').hidden = signedIn;
@@ -324,6 +381,7 @@ function updateAccountBar() {
   $('#local-note').textContent = signedIn
     ? 'This account’s library is stored in Supabase. A private, per-account recovery cache is kept on this device.'
     : 'Guest lists stay in this browser. Sign in to sync a separate private cloud list.';
+  renderAniListPanel();
 }
 
 function importDismissedKey(userId) { return `afterglow-import-dismissed-v1:${String(userId)}`; }
@@ -351,6 +409,7 @@ function enterGuest(message = '') {
   activeUserLoad = null;
   currentUser = null;
   cloudLibraryReady = false;
+  resetAniListPanel();
   entries.clear();
   for (const entry of readEntries(storage, STORE_KEY)) entries.set(String(entry.id), entry);
   updateAccountBar();
@@ -365,10 +424,11 @@ function enterGuest(message = '') {
 async function activateUser(user) {
   if (!user?.id) { enterGuest('Could not restore the account session. Your guest list is still available.'); return; }
   const userId = String(user.id);
-  if (currentUser?.id === userId && cloudLibraryReady) return;
+  if (currentUser?.id === userId && cloudLibraryReady) { void initializeAniListForUser(userId); return; }
   if (activatingUserId === userId && activeUserLoad) return activeUserLoad;
 
   const token = ++authEpoch;
+  if (currentUser?.id !== userId) resetAniListPanel();
   activatingUserId = userId;
   currentUser = { id: userId, email: String(user.email || '') };
   cloudLibraryReady = false;
@@ -394,7 +454,12 @@ async function activateUser(user) {
       render();
       updateMigrationBanner();
       setAppReady();
-      if (pending.length) void flushCloudQueue(userId);
+      if (pending.length) {
+        void initializeAniListForUser(userId, { allowAutoSync: false });
+        void flushCloudQueue(userId).then(() => maybeAutoSyncAniList(userId));
+      } else {
+        void initializeAniListForUser(userId);
+      }
     } catch (error) {
       if (token !== authEpoch) return;
       const cached = readCloudCache(storage, userId);
@@ -457,6 +522,274 @@ function flushCloudQueue(userId) {
   return task;
 }
 
+function aniListSessionStorage() {
+  try { return window.sessionStorage; } catch { return null; }
+}
+
+function updateAniListState(state, { username, lastSyncedAt, message, messageType } = {}) {
+  anilistConnectionState = state;
+  if (username !== undefined) anilistUsername = String(username || '');
+  if (lastSyncedAt !== undefined) anilistLastSyncedAt = lastSyncedAt || null;
+  if (message !== undefined) setAniListMessage(message, messageType || '');
+  renderAniListPanel();
+}
+
+function removeAniListCallback() {
+  try { removeAniListCallbackParamsV2(window.location, window.history); } catch { /* callback cleanup is best effort */ }
+  clearAniListOAuthAttemptV2(aniListSessionStorage());
+}
+
+async function processAniListCallback(userId) {
+  const tabStorage = aniListSessionStorage();
+  const callback = readAniListCallbackV2(window.location, tabStorage);
+  if (!callback && isPotentialAniListOAuthReturnV2(window.location)) {
+    const attempt = readAniListOAuthAttemptV2(tabStorage);
+    if (attempt?.userId === String(userId)) {
+      try { await invokeAniListActionV2(supabaseClient, 'cancel', { state: attempt.state }); } catch { /* expired server state is harmless */ }
+    }
+    updateAniListState('error', { message: 'This AniList callback is expired or has no matching request in this browser. Nothing was connected; start Connect AniList again.', messageType: 'error' });
+    removeAniListCallback();
+    return true;
+  }
+  if (!callback) return false;
+
+  const uid = String(userId);
+  if (callback.expectedUserId !== uid) {
+    updateAniListState('error', { message: 'The ListR account changed during AniList authorization. Nothing was connected; start Connect AniList again.' });
+    removeAniListCallback();
+    return true;
+  }
+
+  if (callback.kind === 'invalid_state' || callback.kind === 'invalid_code') {
+    const attempt = readAniListOAuthAttemptV2(tabStorage);
+    if (attempt?.userId === uid) {
+      try { await invokeAniListActionV2(supabaseClient, 'cancel', { state: attempt.state }); } catch { /* the short-lived server transaction will expire */ }
+    }
+    updateAniListState('error', { message: 'AniList authorization could not be verified. Nothing was connected; start Connect AniList again.' });
+    removeAniListCallback();
+    return true;
+  }
+
+  updateAniListState('connecting', { message: 'Completing AniList authorization…' });
+  try {
+    if (callback.kind === 'denied') {
+      await invokeAniListActionV2(supabaseClient, 'cancel', { state: callback.state });
+      anilistStatusUserId = uid;
+      updateAniListState('not_connected', { message: 'AniList authorization was cancelled. Your ListR account and library are unchanged.' });
+      return true;
+    }
+
+    const connected = await invokeAniListActionV2(supabaseClient, 'callback', { code: callback.code, state: callback.state });
+    if (currentUser?.id !== uid) return true;
+    anilistStatusUserId = uid;
+    updateAniListState('connected', {
+      username: connected.username,
+      lastSyncedAt: connected.lastSyncedAt,
+      message: `Connected as ${connected.username}. Starting the first progress sync…`,
+      messageType: 'success',
+    });
+    await runAniListSync(uid, { automatic: false });
+    return true;
+  } catch (error) {
+    if (currentUser?.id === uid) {
+      const code = String(error?.code || '');
+      updateAniListState('error', { message: safeAniListErrorMessageV2(error), messageType: 'error' });
+      if (code === 'anilist_reauthorization_required') anilistUsername = '';
+    }
+    return true;
+  } finally {
+    removeAniListCallback();
+  }
+}
+
+async function initializeAniListForUser(userId, { forceStatus = false, allowAutoSync = true } = {}) {
+  const uid = String(userId);
+  if (!supabaseClient || !canUseAniListV2(currentUser?.id, cloudLibraryReady) || currentUser.id !== uid) return;
+  const callback = readAniListCallbackV2(window.location, aniListSessionStorage());
+  if (!callback && !forceStatus && anilistStatusUserId === uid) {
+    if (allowAutoSync) void maybeAutoSyncAniList(uid);
+    return;
+  }
+  if (activeAniListStatusLoads.has(uid)) return activeAniListStatusLoads.get(uid);
+
+  let task;
+  task = Promise.resolve().then(async () => {
+    try {
+      if (await processAniListCallback(uid)) return;
+      const status = await invokeAniListActionV2(supabaseClient, 'status');
+      if (currentUser?.id !== uid) return;
+      anilistStatusUserId = uid;
+      updateAniListState(status.state === 'connected' || status.state === 'error' ? status.state : 'not_connected', {
+        username: status.username || '',
+        lastSyncedAt: status.lastSyncedAt || null,
+        message: status.state === 'connected'
+          ? `Connected as ${status.username}. ListR only updates matching anime already in this account.`
+          : (status.state === 'error' ? (status.message || 'AniList needs to be reconnected.') : 'Connect AniList to sync viewing progress from Miruro and other services.'),
+        messageType: status.state === 'error' ? 'error' : '',
+      });
+      if (allowAutoSync) void maybeAutoSyncAniList(uid);
+    } catch (error) {
+      if (currentUser?.id !== uid) return;
+      anilistStatusUserId = uid;
+      updateAniListState('error', { message: safeAniListErrorMessageV2(error), messageType: 'error' });
+    }
+  }).finally(() => {
+    if (activeAniListStatusLoads.get(uid) === task) activeAniListStatusLoads.delete(uid);
+  });
+  activeAniListStatusLoads.set(uid, task);
+  return task;
+}
+
+async function connectAniList() {
+  if (!canUseAniListV2(currentUser?.id, cloudLibraryReady) || !supabaseClient) {
+    setAniListMessage('Sign in to ListR and wait for your private library to load before connecting AniList.', 'error');
+    return;
+  }
+  if (navigator.onLine === false) {
+    updateAniListState('error', { message: 'Connect AniList requires an internet connection.', messageType: 'error' });
+    return;
+  }
+  const uid = currentUser.id;
+  updateAniListState('connecting', { message: 'Preparing a secure AniList authorization request…' });
+  try {
+    const response = await invokeAniListActionV2(supabaseClient, 'start');
+    const authorize = new URL(response.authorizeUrl);
+    const state = authorize.searchParams.get('state');
+    if (authorize.origin !== 'https://anilist.co' || authorize.pathname !== '/api/v2/oauth/authorize'
+      || authorize.searchParams.get('response_type') !== 'code' || !state
+      || !storeAniListOAuthAttemptV2(aniListSessionStorage(), { state, userId: uid })) {
+      throw new Error('A secure AniList authorization could not be prepared in this browser.');
+    }
+    window.location.assign(authorize.toString());
+  } catch (error) {
+    if (currentUser?.id === uid) updateAniListState('error', { message: safeAniListErrorMessageV2(error), messageType: 'error' });
+  }
+}
+
+async function runAniListSync(userId, { automatic = false } = {}) {
+  const uid = String(userId);
+  if (anilistSyncing) return false;
+  if (!canUseAniListV2(currentUser?.id, cloudLibraryReady) || currentUser.id !== uid || !supabaseClient) {
+    if (currentUser?.id === uid) setAniListMessage('Your ListR cloud library must finish loading before progress can sync.', 'error');
+    return false;
+  }
+  if (navigator.onLine === false) {
+    setAniListMessage('You are offline. AniList progress can sync when the connection returns.', 'error');
+    return false;
+  }
+  const lastSuccessfulSync = Date.parse(anilistLastSyncedAt || '') || 0;
+  const lastRequest = Math.max(anilistLastRequestAt, lastSuccessfulSync);
+  const retryInMs = 30_000 - (Date.now() - lastRequest);
+  if (lastRequest && retryInMs > 0) {
+    if (!automatic) setAniListMessage(`Please wait ${Math.ceil(retryInMs / 1000)} seconds before another AniList request.`, 'error');
+    return false;
+  }
+
+  const runId = ++anilistSyncEpoch;
+  anilistSyncing = true;
+  $('#anilist-progress-label').textContent = readOutbox(storage, uid).length
+    ? 'Saving queued ListR changes before AniList sync…'
+    : (automatic ? 'Refreshing AniList progress after the sync interval…' : 'Fetching your AniList anime progress…');
+  setAniListMessage('Syncing with AniList… your existing ListR anime will be checked; no new records will be created.');
+  renderAniListPanel();
+
+  try {
+    if (readOutbox(storage, uid).length) {
+      setAniListMessage('Saving your queued ListR changes before the AniList sync…');
+      await flushCloudQueue(uid);
+      if (currentUser?.id !== uid) return false;
+      if (readOutbox(storage, uid).length) {
+        setAniListMessage('A ListR cloud change is still waiting to sync. Resolve that connection issue before importing AniList progress.', 'error');
+        return false;
+      }
+    }
+
+    anilistLastRequestAt = Date.now();
+    const fetched = await invokeAniListActionV2(supabaseClient, 'sync');
+    const progress = validateProgressResponseV2(fetched);
+    if (currentUser?.id !== uid) return false;
+    $('#anilist-progress-label').textContent = `Applying progress to existing ListR anime (${progress.length} AniList entries checked)…`;
+    setAniListMessage(`Found ${progress.length.toLocaleString()} AniList entries. Updating only matching anime already in your ListR library…`);
+
+    const { data, error } = await supabaseClient.rpc('sync_anilist_progress_v2', { p_progress: progress });
+    if (error) {
+      const saveError = new Error('AniList was read, but ListR could not save the progress. Apply the v2 database migration and try again.');
+      saveError.code = 'sync_database_failed';
+      throw saveError;
+    }
+    if (currentUser?.id !== uid) return false;
+    const counts = Array.isArray(data) ? data[0] : data;
+    const matchedCount = Number(counts?.matched_count);
+    const updatedCount = Number(counts?.updated_count);
+    if (!Number.isSafeInteger(matchedCount) || matchedCount < 0 || !Number.isSafeInteger(updatedCount) || updatedCount < 0) {
+      throw new Error('ListR returned an invalid sync result. The cloud update may need to be checked before retrying.');
+    }
+
+    const progressById = new Map(progress.map((item) => [String(item.mediaId), item.progress]));
+    for (const entry of entries.values()) {
+      if (progressById.has(String(entry.id))) entry.watched = clampWatched(progressById.get(String(entry.id)), entry.meta?.episodes);
+    }
+    persist();
+    render();
+
+    let completionRecorded = true;
+    try {
+      const completed = await invokeAniListActionV2(supabaseClient, 'sync-complete');
+      if (currentUser?.id !== uid) return false;
+      anilistLastSyncedAt = completed.lastSyncedAt || new Date().toISOString();
+    } catch {
+      completionRecorded = false;
+    }
+
+    if (currentUser?.id !== uid) return false;
+    anilistStatusUserId = uid;
+    if (updatedCount > 0) {
+      setAniListMessage(`Updated watched progress for ${updatedCount.toLocaleString()} existing anime${completionRecorded ? '.' : '; the progress is saved, but its sync time could not be recorded.'}`, completionRecorded ? 'success' : 'error');
+    } else {
+      setAniListMessage(`Nothing changed. ${matchedCount.toLocaleString()} existing ListR anime matched AniList progress; no new records were created.${completionRecorded ? '' : ' Sync time could not be recorded.'}`, completionRecorded ? 'success' : 'error');
+    }
+    if (!completionRecorded) anilistLastSyncedAt = null;
+    updateAniListState('connected', { lastSyncedAt: anilistLastSyncedAt, username: anilistUsername });
+    return true;
+  } catch (error) {
+    if (currentUser?.id !== uid) return false;
+    if (String(error?.code || '') === 'anilist_reauthorization_required') {
+      updateAniListState('error', { message: safeAniListErrorMessageV2(error), messageType: 'error' });
+    } else {
+      setAniListMessage(safeAniListErrorMessageV2(error), 'error');
+    }
+    return false;
+  } finally {
+    if (anilistSyncEpoch === runId) {
+      anilistSyncing = false;
+      if (currentUser?.id === uid) renderAniListPanel();
+    }
+  }
+}
+
+async function maybeAutoSyncAniList(userId) {
+  const uid = String(userId);
+  if (!currentUser || currentUser.id !== uid || !cloudLibraryReady || anilistConnectionState !== 'connected'
+    || navigator.onLine === false || anilistSyncing || !shouldAutoSyncAniListV2(anilistLastSyncedAt)) return false;
+  if (readOutbox(storage, uid).length) return false;
+  return runAniListSync(uid, { automatic: true });
+}
+
+async function disconnectAniList() {
+  if (!currentUser || !supabaseClient || anilistSyncing) return;
+  if (!window.confirm('Disconnect the linked AniList account? Your ListR library and ListR sign-in will remain unchanged.')) return;
+  const uid = currentUser.id;
+  updateAniListState('connecting', { message: 'Disconnecting the AniList link…' });
+  try {
+    await invokeAniListActionV2(supabaseClient, 'disconnect');
+    if (currentUser?.id !== uid) return;
+    anilistStatusUserId = uid;
+    updateAniListState('not_connected', { message: 'AniList is disconnected. Your ListR account, cloud library, and guest list are unchanged.' });
+  } catch (error) {
+    if (currentUser?.id === uid) updateAniListState('error', { message: safeAniListErrorMessageV2(error), messageType: 'error' });
+  }
+}
+
 function setAuthMode(mode) {
   authMode = mode === 'register' ? 'register' : 'login';
   const registering = authMode === 'register';
@@ -510,7 +843,7 @@ async function handleAuthSubmit(event) {
   setAuthMessage(authMode === 'register' ? 'Creating your account…' : 'Signing in…');
   try {
     if (authMode === 'register') {
-      const redirectTo = getAuthRedirectUrl();
+      const redirectTo = new URL(window.location.pathname, window.location.origin).href;
       const { data, error } = await supabaseClient.auth.signUp({
         email,
         password,
@@ -617,21 +950,6 @@ async function initializeAccount() {
 }
 
 // ----------------------------- Mutations -----------------------------------
-export function addImportedMedia(media, category, watched = null) {
-  const id = String(media.id);
-  if (entries.has(id)) return false;
-  const entry = createEntry(media, category);
-  if (category !== 'interested' && watched != null) entry.watched = clampWatched(watched, media.episodes);
-  entries.set(id, entry);
-  persistEntry(entry);
-  render();
-  return true;
-}
-
-export function hasAnimeId(id) {
-  return entries.has(String(id));
-}
-
 function addMedia(media, category) {
   const id = String(media.id);
   const existing = entries.get(id);
@@ -678,10 +996,19 @@ $('#auth-form').addEventListener('submit', handleAuthSubmit);
 $('#logout-button').addEventListener('click', signOut);
 $('#import-guest').addEventListener('click', importGuestLibrary);
 $('#dismiss-import').addEventListener('click', () => { if (currentUser) rememberImportDismissal(currentUser.id); });
+$('#connect-anilist').addEventListener('click', connectAniList);
+$('#sync-anilist').addEventListener('click', () => { if (currentUser) void runAniListSync(currentUser.id); });
+$('#disconnect-anilist').addEventListener('click', disconnectAniList);
 window.addEventListener('online', () => {
   if (!currentUser) return;
   if (!cloudLibraryReady) void activateUser(currentUser);
-  else void flushCloudQueue(currentUser.id);
+  else {
+    const userId = currentUser.id;
+    void flushCloudQueue(userId).then(() => initializeAniListForUser(userId, { forceStatus: true }));
+  }
+});
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && currentUser) void maybeAutoSyncAniList(currentUser.id);
 });
 
 $$('.nav-link').forEach((button) => button.addEventListener('click', () => setView(button.dataset.view)));
