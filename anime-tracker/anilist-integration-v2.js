@@ -1,4 +1,4 @@
-export const ANILIST_EDGE_FUNCTION_V2 = 'anilist-account-v4';
+export const ANILIST_EDGE_FUNCTION_V2 = 'anilist-account-v5';
 export const ANILIST_AUTO_SYNC_INTERVAL_MS_V2 = 15 * 60 * 1000;
 const OAUTH_ATTEMPT_KEY = 'afterglow-anilist-oauth-attempt-v2';
 
