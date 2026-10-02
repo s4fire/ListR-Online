@@ -257,9 +257,16 @@ test('recommendation server handlers are wired, ListR-first, AniList-second, and
   assert.match(migration, /grant execute on function public\.finalize_list_r_recommendation_v2[\\s\\S]*to service_role/u);
   assert.doesNotMatch(migration, /grant execute on function public\.finalize_list_r_recommendation_v2[^;]*to authenticated/u);
 });
+  assert.match(edge, /const mode = body\.mode === 'anilist' \? 'anilist' : 'listr'/u);
+  assert.match(edge, /if \(mode === 'listr'\)[\s\S]*anilistState: 'unchanged'/u);
+  assert.match(edge, /if \(mode === 'listr'\)[\s\S]*finalize_list_r_recommendation_v2/u);
+  assert.match(edge, /if \(mode === 'listr'\)[\s\S]*return \{/u);
+  assert.match(edge, /if \(mode !== 'listr'[\s\S]*addAniListAnimeToPlanning/u);
+  assert.match(app, /data-recommendation-action="accept-anilist"/u);
+  assert.match(app, /acceptRecommendation\(button\.dataset\.id, 'listr'\)/u);
+  assert.match(app, /acceptRecommendation\(button\.dataset\.id, 'anilist'\)/u);
 
-
-test('profile dropdown closes outside and recommendation composer selects before explicit send', async () => {
+});test('profile dropdown closes outside and recommendation composer selects before explicit send', async () => {
   const app = await readFile(new URL('../script.js', import.meta.url), 'utf8');
   const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
   const css = await readFile(new URL('../account.css', import.meta.url), 'utf8');
