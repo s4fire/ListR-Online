@@ -429,6 +429,7 @@ async function saveRecommendationToListR(admin: any, userId: string, media: any)
 
 async function actionAcceptRecommendation(admin: any, userId: string, body: Record<string, unknown>) {
   const recommendationId = requireString(body.recommendationId, 'recommendation ID', 36, 36)
+  const mode = body.mode === 'anilist' ? 'anilist' : 'listr'
   if (!/^([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/iu.test(recommendationId)) {
     throw Object.assign(new Error('A valid recommendation is required.'), { status: 400, code: 'invalid_request' })
   }
@@ -440,62 +441,49 @@ async function actionAcceptRecommendation(admin: any, userId: string, body: Reco
     .eq('recipient_id', userId)
     .eq('status', 'pending')
     .maybeSingle()
-  if (recommendationError) {
-    throw Object.assign(new Error('Could not load this recommendation.'), {
-      status: 503,
-      code: 'recommendation_load_failed',
-    })
-  }
-  if (!recommendation) {
-    throw Object.assign(new Error('This recommendation is unavailable.'), {
-      status: 404,
-      code: 'recommendation_unavailable',
-    })
-  }
+  if (recommendationError) throw Object.assign(new Error('Could not load this recommendation.'), { status: 503, code: 'recommendation_load_failed' })
+  if (!recommendation) throw Object.assign(new Error('This recommendation is unavailable.'), { status: 404, code: 'recommendation_unavailable' })
 
   const media = await fetchAniListAnimeById(Number(recommendation.anilist_media_id))
   const listRResult = await saveRecommendationToListR(admin, userId, media)
+
+  if (mode === 'listr') {
+    const { data: finalizedStatus, error: finalizeError } = await admin.rpc(
+      'finalize_list_r_recommendation_v2',
+      { p_recommendation_id: recommendationId, p_recipient_id: userId },
+    )
+    if (finalizeError || finalizedStatus !== 'accepted') {
+      throw Object.assign(new Error('ListR saved the anime, but could not finalize the recommendation. It remains retryable.'), {
+        status: 503, code: 'recommendation_finalize_failed',
+      })
+    }
+    return {
+      state: 'accepted',
+      recommendationId,
+      anilistState: 'unchanged',
+      alreadyInListR: listRResult.alreadyInListR,
+      existingCategory: listRResult.existingCategory,
+    }
+  }
 
   const { data: connection, error: connectionError } = await admin
     .from(CONNECTIONS)
     .select('access_token,token_expires_at')
     .eq('user_id', userId)
     .maybeSingle()
-  if (connectionError) {
-    throw Object.assign(new Error('Could not load the AniList connection.'), {
-      status: 503,
-      code: 'connection_status_unavailable',
-    })
-  }
-  if (!connection) {
-    throw Object.assign(new Error('Connect your AniList account before accepting this recommendation.'), {
-      status: 409,
-      code: 'anilist_not_connected',
-    })
-  }
-  if (Date.parse(connection.token_expires_at) <= Date.now()) {
-    throw Object.assign(new Error('Your AniList authorization has expired. Reconnect AniList to continue.'), {
-      status: 409,
-      code: 'anilist_reauthorization_required',
-    })
-  }
+  if (connectionError) throw Object.assign(new Error('Could not load the AniList connection.'), { status: 503, code: 'connection_status_unavailable' })
+  if (!connection) throw Object.assign(new Error('Connect your AniList account before adding this recommendation to AniList.'), { status: 409, code: 'anilist_not_connected' })
+  if (Date.parse(connection.token_expires_at) <= Date.now()) throw Object.assign(new Error('Your AniList authorization has expired. Reconnect AniList to continue.'), { status: 409, code: 'anilist_reauthorization_required' })
 
-  // This is the only ListR operation allowed to write to AniList.
   await addAniListAnimeToPlanning(connection.access_token, Number(recommendation.anilist_media_id))
 
   const { data: finalizedStatus, error: finalizeError } = await admin.rpc(
     'finalize_list_r_recommendation_v2',
-    {
-      p_recommendation_id: recommendationId,
-      p_recipient_id: userId,
-    },
+    { p_recommendation_id: recommendationId, p_recipient_id: userId },
   )
   if (finalizeError || finalizedStatus !== 'accepted') {
-    throw Object.assign(new Error(
-      'AniList confirmed the change, but ListR could not finalize the recommendation. It remains retryable.',
-    ), {
-      status: 503,
-      code: 'recommendation_finalize_failed',
+    throw Object.assign(new Error('AniList confirmed the change, but ListR could not finalize the recommendation. It remains retryable.'), {
+      status: 503, code: 'recommendation_finalize_failed',
     })
   }
 
