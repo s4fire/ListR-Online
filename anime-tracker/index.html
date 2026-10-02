@@ -26,8 +26,10 @@
       <nav class="primary-nav" aria-label="Main navigation">
         <button class="nav-link is-active" type="button" data-view="watching">Watching <span class="nav-count" id="nav-watching">0</span></button>
         <button class="nav-link" type="button" data-view="completed">Completed <span class="nav-count" id="nav-completed">0</span></button>
-        <button class="nav-link" type="button" data-view="interested">Interested <span class="nav-count" id="nav-interested">0</span></button>
+        <button class="nav-link" type="button" data-view="friends">Friends</button>
         <button class="nav-link" type="button" data-view="stats">Stats</button>
+        <button class="nav-link" type="button" data-view="recommendations">Recommendations <span class="nav-count" id="nav-recommendations">0</span></button>
+        <button class="nav-link" type="button" data-view="interested">Interested <span class="nav-count" id="nav-interested">0</span></button>
       </nav>
       <button class="button button-primary top-add" id="open-search" type="button"><span aria-hidden="true">＋</span> Add anime</button>
     </header>
@@ -63,7 +65,7 @@
         <progress aria-label="AniList progress synchronization in progress"></progress>
       </div>
       <p id="anilist-last-sync" class="anilist-last-sync">Last successful sync: never</p>
-      <p class="anilist-disclosure">AniList does not support OAuth scopes, so approval can grant broad AniList data access. ListR keeps the token in Supabase and only reads anime progress; it never writes to AniList.</p>
+      <p class="anilist-disclosure">AniList does not support OAuth scopes. ListR keeps the token in Supabase and reads progress. Only choosing “Add to Interested” on a received recommendation can explicitly add that anime to AniList Planning.</p>
     </section>
 
     <section id="migration-banner" class="migration-banner" aria-labelledby="migration-title" hidden>
@@ -104,6 +106,32 @@
         <p id="local-note" class="local-note"><span aria-hidden="true">◈</span> Guest lists stay in this browser. Sign in to sync a separate private cloud list.</p>
       </section>
 
+      <section class="page-view social-view" id="friends-view" aria-labelledby="friends-title" hidden>
+        <div class="subpage-heading"><p class="eyebrow">WATCH TOGETHER</p><h1 id="friends-title">Your anime <span>circle.</span></h1><p>Find ListR users by username, send friend requests, and share recommendations.</p></div>
+        <div class="social-toolbar">
+          <button class="button button-quiet" id="edit-username" type="button" hidden>Set username</button>
+          <button class="button button-quiet" id="refresh-friends" type="button">↻ Refresh friends</button>
+        </div>
+        <form id="friend-search-form" class="search-panel social-search-panel">
+          <label class="field-with-icon search-input"><span aria-hidden="true">⌕</span><input id="friend-query" type="search" placeholder="Search username (3+ characters)" autocomplete="off" minlength="3" maxlength="20" aria-label="Search ListR usernames" required></label>
+          <button class="button button-primary search-submit" type="submit">Find users</button>
+        </form>
+        <p id="friends-message" class="message" role="status" aria-live="polite">Sign in and choose a username to use Friends.</p>
+        <div class="social-columns">
+          <section class="social-panel" aria-labelledby="incoming-title"><div class="panel-heading"><div><span class="section-kicker">YOUR INBOX</span><h2 id="incoming-title">Friend requests</h2></div></div><div id="incoming-friends" class="social-list"></div></section>
+          <section class="social-panel" aria-labelledby="friends-list-title"><div class="panel-heading"><div><span class="section-kicker">YOUR PEOPLE</span><h2 id="friends-list-title">Friends</h2></div></div><div id="friends-list" class="social-list"></div></section>
+        </div>
+        <section class="social-panel search-results-panel" aria-labelledby="friend-results-title"><div class="panel-heading"><div><span class="section-kicker">DISCOVER</span><h2 id="friend-results-title">Search results</h2></div></div><div id="friend-search-results" class="social-list"></div></section>
+      </section>
+
+      <section class="page-view social-view" id="recommendations-view" aria-labelledby="recommendations-title" hidden>
+        <div class="subpage-heading"><p class="eyebrow">A FRIEND THOUGHT YOU’D LOVE</p><h1 id="recommendations-title">Stories worth <span>sharing.</span></h1><p>Anime friends have sent your way. Accepting adds it to ListR Interested and AniList Planning.</p></div>
+        <div class="social-toolbar"><button class="button button-quiet" id="refresh-recommendations" type="button">↻ Refresh recommendations</button></div>
+        <p id="recommendations-message" class="message" role="status" aria-live="polite">Sign in to see recommendations sent to you.</p>
+        <div id="recommendations-list" class="anime-grid social-anime-grid"></div>
+        <div id="recommendations-empty" class="empty-state" hidden><div class="empty-orbit" aria-hidden="true">✦</div><h3>No recommendations yet.</h3><p>When a ListR friend recommends an anime, it will appear here.</p></div>
+      </section>
+
       <section class="page-view" id="search-view" aria-labelledby="search-title" hidden>
         <div class="subpage-heading"><p class="eyebrow">DISCOVER SOMETHING NEW</p><h1 id="search-title">Find your next <span>favourite.</span></h1><p>Search the AniList catalogue, then add a series to your collection.</p></div>
         <form id="search-form" class="search-panel">
@@ -135,7 +163,7 @@
 
   <dialog id="auth-dialog" class="auth-dialog" aria-labelledby="auth-title">
     <button class="dialog-close" id="close-auth" type="button" aria-label="Close account dialog">×</button>
-    <div class="auth-brand"><span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span><span>ListR<span class="brand-dot">.</span></span></div>
+    <div class="auth-brand"><span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span><span>afterglow<span class="brand-dot">.</span></span></div>
     <p class="eyebrow auth-eyebrow">YOUR LIST, WHEREVER YOU WATCH</p>
     <h2 id="auth-title">Welcome back.</h2>
     <p id="auth-intro" class="auth-intro">Sign in to load your private library from the cloud.</p>
@@ -145,6 +173,8 @@
     </div>
     <form id="auth-form" novalidate>
       <label class="auth-field" for="auth-email">Email<input id="auth-email" name="email" type="email" autocomplete="email" required maxlength="254"></label>
+      <label id="register-username-field" class="auth-field" for="auth-username" hidden>Username<input id="auth-username" name="username" type="text" autocomplete="username" minlength="3" maxlength="20" autocapitalize="none" spellcheck="false" aria-describedby="username-help"></label>
+      <p id="username-help" class="auth-footnote username-help" hidden>Friends can find you by this unique username. Use 3–20 letters, numbers, or underscores; it is case-insensitive.</p>
       <label class="auth-field" for="auth-password">Password<input id="auth-password" name="password" type="password" autocomplete="current-password" required></label>
       <label id="confirm-password-field" class="auth-field" for="auth-confirm-password" hidden>Confirm password<input id="auth-confirm-password" name="confirmPassword" type="password" autocomplete="new-password"></label>
       <p id="auth-message" class="auth-message" role="status" aria-live="polite"></p>
@@ -153,7 +183,28 @@
     <p class="auth-footnote">Passwords are handled by Supabase Auth and are never stored by this website.</p>
   </dialog>
 
+  <dialog id="username-dialog" class="auth-dialog social-dialog" aria-labelledby="username-dialog-title">
+    <button class="dialog-close" id="close-username" type="button" aria-label="Close username dialog">×</button>
+    <p class="eyebrow auth-eyebrow">A NAME FOR YOUR CIRCLE</p><h2 id="username-dialog-title">Choose your username.</h2>
+    <p class="auth-intro">A username is required for Friends features. It is public to ListR users; your email stays private.</p>
+    <form id="username-form" novalidate><label class="auth-field" for="profile-username">Username<input id="profile-username" name="username" type="text" minlength="3" maxlength="20" autocomplete="username" autocapitalize="none" spellcheck="false" required></label><p id="username-message" class="auth-message" role="status" aria-live="polite"></p><button id="username-submit" class="button button-primary auth-submit" type="submit">Save username</button></form>
+  </dialog>
+
+  <dialog id="friend-profile-dialog" class="auth-dialog social-dialog" aria-labelledby="friend-profile-title">
+    <button class="dialog-close" id="close-friend-profile" type="button" aria-label="Close friend profile">×</button>
+    <p class="eyebrow auth-eyebrow">LISTR FRIEND</p><h2 id="friend-profile-title">Friend profile</h2><p id="friend-profile-username" class="auth-intro"></p>
+    <div class="profile-actions"><button id="add-profile-friend" class="button button-primary" type="button">Add Friend</button><button id="view-friend-stats" class="button button-quiet" type="button">View Stats</button><button id="recommend-to-friend" class="button button-primary" type="button">Recommend</button><button id="unfriend-user" class="button button-quiet" type="button">Unfriend</button></div>
+    <div id="friend-stats" class="friend-stats" hidden></div><p id="friend-profile-message" class="auth-message" role="status" aria-live="polite"></p>
+  </dialog>
+
+  <dialog id="recommend-anime-dialog" class="auth-dialog social-dialog recommend-dialog" aria-labelledby="recommend-anime-title">
+    <button class="dialog-close" id="close-recommend-anime" type="button" aria-label="Close recommendation search">×</button>
+    <p class="eyebrow auth-eyebrow">PASS A STORY ALONG</p><h2 id="recommend-anime-title">Recommend an anime.</h2><p id="recommend-recipient" class="auth-intro"></p>
+    <form id="recommend-search-form" class="recommend-search"><label class="field-with-icon search-input"><span aria-hidden="true">⌕</span><input id="recommend-query" type="search" placeholder="Search AniList…" minlength="2" autocomplete="off" aria-label="Search anime to recommend" required></label><button class="button button-primary" type="submit">Search</button></form>
+    <p id="recommend-search-message" class="message" role="status" aria-live="polite">Choose an anime from the AniList search results.</p><div id="recommend-search-results" class="recommend-results"></div>
+  </dialog>
+
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <noscript><div class="noscript">ListR needs JavaScript enabled to search AniList and manage your tracker.</div></noscript>
+  <noscript><div class="noscript">Afterglow needs JavaScript enabled to search AniList and manage your tracker.</div></noscript>
 </body>
 </html>
