@@ -1,62 +1,58 @@
 # ListR
 
-A static anime tracker in `anime-tracker/`, deployed to GitHub Pages and backed by AniList for search/metadata. Guest lists remain in the current browser. Signed-in lists sync through Supabase Auth and Postgres, with a database-enforced owner boundary.
+ListR is a lightweight anime tracker built around AniList. It gives you one place to keep track of what you're watching, what you've completed, and what you want to watch next.
 
-## Supabase setup (required for accounts and cloud sync)
-
-The frontend is configured for the Supabase project in `anime-tracker/supabase-config.js`. That file contains only the project URL and a publishable browser key; those are public client configuration, not secrets. Never put a Supabase secret/service-role key, database password, or other private credential in this repository.
-
-1. In the matching Supabase project, open **SQL Editor** and run [`supabase/migrations/202610010001_anime_records.sql`](supabase/migrations/202610010001_anime_records.sql). It creates the user-owned `anime_records` table, compound `(user_id, anilist_media_id)` uniqueness, validation, timestamps, and separate select/insert/update/delete RLS policies.
-2. In **Authentication → URL Configuration**, set the Site URL to the actual public site, normally `https://s4fire.github.io/ListR-Online/`. Add that exact URL to the Redirect URLs allow-list. For local development also allow the local static-server URL, such as `http://localhost:8000/**`. If the repository uses a custom Pages domain, allow that origin instead.
-3. Keep email/password sign-up enabled. This project currently requires email confirmation (`mailer_autoconfirm` is off), so configure a working email provider/SMTP if needed. A new user must verify the Supabase email link before signing in; the link returns to ListR.
-4. If using another Supabase project, change only `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` in `anime-tracker/supabase-config.js` to that project's public values. Apply the migration there too. Do not commit private keys.
-
-The UI shows a setup error rather than mixing guest data if the cloud table is missing or access is denied. Guest mode remains available while the backend is being configured.
+The project is designed to work as a simple static web app while still supporting optional accounts and cloud-synced libraries.
 
 ## Features
 
-- Watching, Completed, and Interested categories; tracker state and statistics are restored from the authenticated user's cloud rows.
-- User-owned rows keyed by Auth user ID plus AniList media ID; RLS is the actual security boundary, not just JavaScript checks.
-- Persistent Supabase Auth sessions; email/password account forms with validation, clear errors, and verification guidance.
-- Non-destructive guest-library import: imports missing AniList IDs only, keeps cloud duplicates unchanged, and leaves the local guest list intact.
-- Per-user recovery cache and retryable sync outbox for transient network/backend failures; caches and queues are namespaced by the authenticated user ID.
-- Logout clears the visible cloud state and returns to the separate local guest list.
-- Existing AniList search/metadata, add/remove/move, episode controls, progress, filters/sorting, responsive UI, and statistics are retained.
+- **Watching, Completed & Interested** — organize your anime into three simple categories.
+- **AniList integration** — search AniList for anime and use its metadata and episode information.
+- **Episode tracking** — keep track of your current progress and see how much you've watched.
+- **Statistics** — view total episodes and watch time across your tracked anime.
+- **Cloud libraries** — signed-in users can keep their ListR library synced through Supabase.
+- **Guest mode** — use ListR without an account, with the guest library kept locally in the browser.
+- **Responsive interface** — designed to work across desktop and smaller screens.
+- **Safe multi-user storage** — signed-in libraries are separated by the authenticated user's ID and protected with Supabase Row Level Security.
 
-## Run locally
+## Project structure
 
-```bash
-cd anime-tracker
-python3 -m http.server 8000
+```
+ListR-Online/
+├── anime-tracker/       # The live ListR web app
+├── foundation/          # Foundation ZIP archives used for project baselines
+├── supabase/            # Database migrations and database tests
+├── .github/workflows/   # GitHub Pages deployment
+└── PROJECT_STATE.md     # Development handoff and project state
 ```
 
-Visit <http://localhost:8000>. Supabase email-confirmation redirects must include the local URL in the project's Redirect URLs list. AniList search/refresh and cloud sync require network access; queued signed-in changes are retained for retry.
+The live frontend lives in `anime-tracker/`. The `foundation/` directory contains archived project baselines and is not part of the deployed site.
 
-Run the frontend logic tests with Node.js 18 or later:
+## Running locally
+
+ListR has no frontend build step. Serve the `anime-tracker/` directory with any local static web server and open the resulting address in a browser.
+
+For development, the frontend logic tests can be run with Node.js 18+:
 
 ```bash
 cd anime-tracker
 node --test tests/*.test.mjs
 ```
 
-The Postgres RLS tests are in [`supabase/tests/anime_records_rls.test.sql`](supabase/tests/anime_records_rls.test.sql). From the repository root, initialize the Supabase CLI configuration once, then run the local stack and tests:
+The Supabase database tests live under `supabase/tests/`.
 
-```bash
-supabase init
-supabase start
-supabase db reset
-supabase test db
-```
+## Deployment
 
-These database tests use two Auth user IDs and exercise signed-out denial, read isolation, owner-checked insert/update/delete, and cross-owner modification denial.
+The project is deployed through GitHub Pages using the workflow in `.github/workflows/static.yml`. Changes pushed to `main` are tested and then deployed as the contents of `anime-tracker/`.
 
-## GitHub Pages
+## Data & privacy
 
-The checked-in workflow at `.github/workflows/static.yml` copies `anime-tracker/` into the Pages artifact. Keep all frontend modules and styles together in that directory. Repository: [`s4fire/ListR-Online`](https://github.com/s4fire/ListR-Online). The expected project-site URL is <https://s4fire.github.io/ListR-Online/> unless a custom Pages domain is configured. Supabase remains the external auth/database service; the frontend has no server-side build requirement.
+Guest libraries stay in the user's browser and are not uploaded automatically.
 
-## Data and security notes
+Signed-in anime records are stored in Supabase and are scoped to the authenticated ListR user. Supabase Row Level Security enforces that ownership boundary at the database level.
 
-- Guest mode uses the existing `localStorage` key and does not upload it. Signing in does not silently merge or delete it; the import banner provides an explicit, duplicate-safe choice.
-- Signed-in anime records live in Supabase. The browser keeps only the Supabase Auth session, a user-namespaced recovery cache, and a user-namespaced retry queue. Passwords are handled by Supabase Auth, never written by ListR to localStorage or the anime table.
-- Every table operation is constrained by RLS `auth.uid() = user_id`; the frontend also filters by user ID only as defense in depth. Never expose a secret/service-role key.
-- AniList IDs are unique only within one user's library, so different users may track the same anime.
+The frontend uses only public client configuration. Private Supabase credentials and service-role keys should never be committed to the repository.
+
+## Status
+
+ListR is an actively developed project. New features and integrations are added incrementally while keeping the existing tracker, authentication, cloud sync, and guest functionality intact.
