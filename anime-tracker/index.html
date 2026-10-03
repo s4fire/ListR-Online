@@ -245,9 +245,9 @@
   <dialog id="auth-dialog" class="auth-dialog" aria-labelledby="auth-title">
     <button class="dialog-close" id="close-auth" type="button" aria-label="Close account dialog">×</button>
     <div class="auth-brand"><span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span><span>ListR<span class="brand-dot">.</span></span></div>
-    <p class="eyebrow auth-eyebrow">YOUR LIST, WHEREVER YOU WATCH</p>
+    <p class="eyebrow auth-eyebrow">YOUR LIST</p>
     <h2 id="auth-title">Welcome back.</h2>
-    <p id="auth-intro" class="auth-intro">Sign in to load your private library from the cloud.</p>
+    <p id="auth-intro" class="auth-intro">Sign in to load your list.</p>
     <div class="auth-tabs" role="group" aria-label="Account action">
       <button id="auth-tab-login" class="auth-tab is-active" type="button" aria-pressed="true">Sign in</button>
       <button id="auth-tab-register" class="auth-tab" type="button" aria-pressed="false">Create account</button>
@@ -266,52 +266,52 @@
 
   <dialog id="appearance-dialog" class="auth-dialog appearance-dialog" aria-labelledby="appearance-title">
     <button class="dialog-close" id="close-appearance" type="button" aria-label="Close appearance settings">×</button>
-    <p class="eyebrow auth-eyebrow">MAKE LISTR YOURS</p>
+    <p class="eyebrow auth-eyebrow">APPEARANCE</p>
     <h2 id="appearance-title">Appearance</h2>
-    <p class="auth-intro">Choose a colour theme and page arrangement independently. A signed-in choice follows your ListR account; guest choices stay in this browser.</p>
+    <p class="auth-intro">Pick a theme and layout. Your choice is saved to your account when signed in, or just on this browser as a guest.</p>
     <fieldset class="appearance-group">
       <legend>Colour theme</legend>
       <div class="appearance-options appearance-theme-options" role="group" aria-label="Colour theme">
-        <button class="appearance-option" type="button" data-appearance-theme="sub-zero" aria-pressed="true"><span class="appearance-swatch" data-swatch="sub-zero" aria-hidden="true"></span><span><strong>Sub-Zero</strong><small>Midnight blue</small></span></button>
-        <button class="appearance-option" type="button" data-appearance-theme="onyx" aria-pressed="false"><span class="appearance-swatch" data-swatch="onyx" aria-hidden="true"></span><span><strong>Onyx</strong><small>Charcoal silver</small></span></button>
-        <button class="appearance-option" type="button" data-appearance-theme="cosmic" aria-pressed="false"><span class="appearance-swatch" data-swatch="cosmic" aria-hidden="true"></span><span><strong>Cosmic</strong><small>Indigo and rose</small></span></button>
-        <button class="appearance-option" type="button" data-appearance-theme="emerald" aria-pressed="false"><span class="appearance-swatch" data-swatch="emerald" aria-hidden="true"></span><span><strong>Emerald</strong><small>Forest and mint</small></span></button>
-        <button class="appearance-option" type="button" data-appearance-theme="ghost" aria-pressed="false"><span class="appearance-swatch" data-swatch="ghost" aria-hidden="true"></span><span><strong>Ghost</strong><small>Calm light palette</small></span></button>
+        <button class="appearance-option" type="button" data-appearance-theme="sub-zero" aria-pressed="true"><span class="appearance-swatch" data-swatch="sub-zero" aria-hidden="true"></span><span><strong>Sub-Zero</strong><small>Blue</small></span></button>
+        <button class="appearance-option" type="button" data-appearance-theme="onyx" aria-pressed="false"><span class="appearance-swatch" data-swatch="onyx" aria-hidden="true"></span><span><strong>Onyx</strong><small>Dark</small></span></button>
+        <button class="appearance-option" type="button" data-appearance-theme="cosmic" aria-pressed="false"><span class="appearance-swatch" data-swatch="cosmic" aria-hidden="true"></span><span><strong>Cosmic</strong><small>Purple</small></span></button>
+        <button class="appearance-option" type="button" data-appearance-theme="emerald" aria-pressed="false"><span class="appearance-swatch" data-swatch="emerald" aria-hidden="true"></span><span><strong>Emerald</strong><small>Green</small></span></button>
+        <button class="appearance-option" type="button" data-appearance-theme="ghost" aria-pressed="false"><span class="appearance-swatch" data-swatch="ghost" aria-hidden="true"></span><span><strong>Ghost</strong><small>Light</small></span></button>
       </div>
     </fieldset>
     <fieldset class="appearance-group">
       <legend>Page layout</legend>
       <div class="appearance-options appearance-layout-options" role="group" aria-label="Page layout">
-        <button class="appearance-option" type="button" data-appearance-layout="current" aria-pressed="true"><span class="layout-preview layout-preview-current" aria-hidden="true"><i></i><i></i><i></i></span><span><strong>Current</strong><small>Side rail and poster cards</small></span></button>
-        <button class="appearance-option" type="button" data-appearance-layout="reworked-old" aria-pressed="false"><span class="layout-preview layout-preview-old" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span><strong>Reworked Old</strong><small>Classic navigation and poster grid</small></span></button>
-        <button class="appearance-option" type="button" data-appearance-layout="new" aria-pressed="false"><span class="layout-preview layout-preview-new" aria-hidden="true"><i></i><i></i></span><span><strong>New</strong><small>Wide workspace and horizontal cards</small></span></button>
+        <button class="appearance-option" type="button" data-appearance-layout="current" aria-pressed="true"><span class="layout-preview layout-preview-current" aria-hidden="true"><i></i><i></i><i></i></span><span><strong>Current</strong><small>Current layout</small></span></button>
+        <button class="appearance-option" type="button" data-appearance-layout="reworked-old" aria-pressed="false"><span class="layout-preview layout-preview-old" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span><strong>Reworked Old</strong><small>Old layout</small></span></button>
+        <button class="appearance-option" type="button" data-appearance-layout="new" aria-pressed="false"><span class="layout-preview layout-preview-new" aria-hidden="true"><i></i><i></i></span><span><strong>New</strong><small>New layout</small></span></button>
       </div>
     </fieldset>
-    <p id="appearance-sync-status" class="appearance-sync-status" role="status" aria-live="polite">Your guest appearance is saved in this browser.</p>
+    <p id="appearance-sync-status" class="appearance-sync-status" role="status" aria-live="polite">Appearance saved in this browser.</p>
   </dialog>
 
   <dialog id="username-dialog" class="auth-dialog social-dialog" aria-labelledby="username-dialog-title">
     <button class="dialog-close" id="close-username" type="button" aria-label="Close username dialog">×</button>
-    <p class="eyebrow auth-eyebrow">A NAME FOR YOUR CIRCLE</p><h2 id="username-dialog-title">Choose your username.</h2>
-    <p class="auth-intro">A username is required for Friends features. It is public to ListR users; your email stays private.</p>
+    <p class="eyebrow auth-eyebrow">USERNAME</p><h2 id="username-dialog-title">Choose your username.</h2>
+    <p class="auth-intro">Pick a username so other ListR users can find you. Your email stays private.</p>
     <form id="username-form" novalidate><label class="auth-field" for="profile-username">Username<input id="profile-username" name="username" type="text" minlength="3" maxlength="20" autocomplete="username" autocapitalize="none" spellcheck="false" required></label><p id="username-message" class="auth-message" role="status" aria-live="polite"></p><button id="username-submit" class="button button-primary auth-submit" type="submit">Save username</button></form>
   </dialog>
 
   <dialog id="friend-profile-dialog" class="auth-dialog social-dialog" aria-labelledby="friend-profile-title">
     <button class="dialog-close" id="close-friend-profile" type="button" aria-label="Close friend profile">×</button>
-    <p class="eyebrow auth-eyebrow">LISTR FRIEND</p><h2 id="friend-profile-title">Friend profile</h2><p id="friend-profile-username" class="auth-intro"></p>
-    <div class="profile-actions"><button id="add-profile-friend" class="button button-primary" type="button">Add Friend</button><button id="view-friend-stats" class="button button-quiet" type="button">View Stats</button><button id="recommend-to-friend" class="button button-primary" type="button">Recommend</button><button id="unfriend-user" class="button button-quiet" type="button">Unfriend</button></div>
+    <p class="eyebrow auth-eyebrow">FRIEND</p><h2 id="friend-profile-title">Friend</h2><p id="friend-profile-username" class="auth-intro"></p>
+    <div class="profile-actions"><button id="add-profile-friend" class="button button-primary" type="button">Add Friend</button><button id="view-friend-stats" class="button button-quiet" type="button">Stats</button><button id="recommend-to-friend" class="button button-primary" type="button">Recommend</button><button id="unfriend-user" class="button button-quiet" type="button">Unfriend</button></div>
     <div id="friend-stats" class="friend-stats" hidden></div><p id="friend-profile-message" class="auth-message" role="status" aria-live="polite"></p>
   </dialog>
 
   <dialog id="recommend-anime-dialog" class="auth-dialog social-dialog recommend-dialog" aria-labelledby="recommend-anime-title">
     <button class="dialog-close" id="close-recommend-anime" type="button" aria-label="Close recommendation search">×</button>
-    <p class="eyebrow auth-eyebrow">PASS A STORY ALONG</p><h2 id="recommend-anime-title">Recommend an anime.</h2><p id="recommend-recipient" class="auth-intro"></p>
+    <p class="eyebrow auth-eyebrow">RECS</p><h2 id="recommend-anime-title">Send a rec.</h2><p id="recommend-recipient" class="auth-intro"></p>
     <form id="recommend-search-form" class="recommend-search"><label class="field-with-icon search-input"><span aria-hidden="true">⌕</span><input id="recommend-query" type="search" placeholder="Search AniList…" minlength="2" autocomplete="off" aria-label="Search anime to recommend" required></label><button class="button button-primary" type="submit">Search</button></form>
     <p id="recommend-search-message" class="message recommend-search-message" role="status" aria-live="polite">Choose an anime from the AniList search results.</p>
     <div id="recommend-search-results" class="recommend-results" aria-label="AniList search results" aria-live="polite"></div>
-    <div id="recommend-selected" class="recommend-selected" aria-live="polite"><span class="recommend-selection-empty">Select an anime to preview it here.</span></div>
-    <div class="recommend-footer"><p id="recommend-selection-hint">Choose a result to enable sending.</p><button id="send-recommendation" class="button button-primary" type="button" disabled>Send Recommendation</button></div>
+    <div id="recommend-selected" class="recommend-selected" aria-live="polite"><span class="recommend-selection-empty">Pick an anime first.</span></div>
+    <div class="recommend-footer"><p id="recommend-selection-hint">Pick an anime to send.</p><button id="send-recommendation" class="button button-primary" type="button" disabled>Send rec</button></div>
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
