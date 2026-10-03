@@ -1,4 +1,4 @@
-import { MIRURO_RESOLVER_LIMITS_V2, resolveMiruroMatchV2 } from './_shared/miruro-resolver-v2.mjs';
+import { MIRURO_RESOLVER_LIMITS_V2, resolveMiruroMatchV2 } from '../_shared/miruro-resolver-v2.mjs';
 
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const CACHE_MAX = 300;
