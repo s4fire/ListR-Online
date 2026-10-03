@@ -324,53 +324,29 @@ async function fetchHtmlV2(fetcher, url, timeoutMs) {
   return response ? new TextDecoder().decode(response.bytes) : '';
 }
 
-function buildCatalogCandidateV2(item) {
-  if (!item || typeof item !== 'object') return null;
-  const opaqueId = String(item.id || '');
-  if (!/^[A-Za-z0-9_-]{1,120}$/u.test(opaqueId)) return null;
-  const itemTitle = item.title && typeof item.title === 'object'
-    ? String(item.title.english || item.title.romaji || item.title.native || '')
-    : '';
-  if (!itemTitle) return null;
-  const slug = slugifyTitleV2(itemTitle) || `anime-${opaqueId.toLocaleLowerCase('en')}`;
-  const infoUrl = safeInfoUrlV2(`/info/${opaqueId}/${slug}`);
-  const watchUrl = safeWatchUrlV2(`/watch/${opaqueId}/${slug}`);
-  if (!infoUrl || !watchUrl) return null;
-  return {
-    infoUrl,
-    watchUrl,
-    names: [itemTitle],
-  };
-}
-
 function exactCatalogCandidatesV2(payload, mediaId) {
   const expected = String(mediaId);
   const candidates = new Map();
   for (const item of payload?.data || []) {
-    const anilistIds = Array.isArray(item?.external_ids?.anilist) ? item.external_ids.anilist : [];
+    if (!item || typeof item !== 'object') continue;
+    const anilistIds = Array.isArray(item.external_ids?.anilist) ? item.external_ids.anilist : [];
     if (!anilistIds.some((id) => String(id) === expected)) continue;
-    const candidate = buildCatalogCandidateV2(item);
-    if (candidate) candidates.set(candidate.infoUrl, candidate);
+    const opaqueId = String(item.id || '');
+    if (!/^[A-Za-z0-9_-]{1,120}$/u.test(opaqueId)) continue;
+    const itemTitle = item.title && typeof item.title === 'object'
+      ? String(item.title.english || item.title.romaji || item.title.native || '')
+      : '';
+    const slug = slugifyTitleV2(itemTitle) || `anime-${opaqueId.toLocaleLowerCase('en')}`;
+    const infoUrl = safeInfoUrlV2(`/info/${opaqueId}/${slug}`);
+    const watchUrl = safeWatchUrlV2(`/watch/${opaqueId}/${slug}`);
+    if (!infoUrl || !watchUrl) continue;
+    candidates.set(infoUrl, {
+      infoUrl,
+      watchUrl,
+      names: [itemTitle].filter(Boolean),
+    });
   }
   return [...candidates.values()];
-}
-
-function titleCatalogCandidatesV2(payload, titles) {
-  const candidates = new Map();
-  for (const item of payload?.data || []) {
-    const candidate = buildCatalogCandidateV2(item);
-    if (!candidate) continue;
-    const score = titleScoreV2(candidate.names, titles);
-    if (score < 70) continue;
-    const current = candidates.get(candidate.infoUrl);
-    if (!current || score > current.score) {
-      candidates.set(candidate.infoUrl, { ...candidate, score });
-    }
-  }
-  return [...candidates.values()]
-    .sort((a, b) => b.score - a.score || a.infoUrl.localeCompare(b.infoUrl))
-    .slice(0, MIRURO_RESOLVER_LIMITS_V2.candidates)
-    .map(({ score, ...candidate }) => candidate);
 }
 
 async function searchHtmlCandidatesV2(fetcher, titles) {
@@ -405,21 +381,10 @@ export async function resolveMiruroMatchV2(rawMedia, fetcher = fetch) {
     }
   }
 
-  // The catalog may occasionally omit its AniList mapping. We can still use title-matched
-  // catalog entries as candidates, but the info page MUST confirm the exact AniList ID below.
-  let candidates = [...catalogCandidates.values()].slice(0, MIRURO_RESOLVER_LIMITS_V2.candidates);
-  if (!candidates.length) {
-    const titleCandidates = new Map();
-    for (const payload of catalogPages) {
-      for (const candidate of titleCatalogCandidatesV2(payload, media.titles)) {
-        titleCandidates.set(candidate.infoUrl, candidate);
-      }
-    }
-    candidates = [...titleCandidates.values()].slice(0, MIRURO_RESOLVER_LIMITS_V2.candidates);
-  }
-
   // Older Miruro page variants may have server-rendered result links; these remain a fallback only.
-  if (!candidates.length) candidates = await searchHtmlCandidatesV2(fetcher, queries);
+  const candidates = catalogCandidates.size
+    ? [...catalogCandidates.values()].slice(0, MIRURO_RESOLVER_LIMITS_V2.candidates)
+    : await searchHtmlCandidatesV2(fetcher, queries);
   if (!candidates.length) return null;
 
   const matches = await Promise.all(candidates.map(async (candidate) => {
