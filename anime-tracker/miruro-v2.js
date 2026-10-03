@@ -52,6 +52,161 @@ export function buildMiruroEpisodeUrlV2(watchUrl, episode) {
   return url.toString();
 }
 
+
+async function readBrowserCatalogV2(response, maxBytes = 1_200_000) {
+  if (!response?.ok || !response.body?.getReader) return null;
+  const reader = response.body.getReader();
+  const chunks = [];
+  let size = 0;
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > maxBytes) {
+        await reader.cancel();
+        return null;
+      }
+      chunks.push(value);
+    }
+  } catch {
+    return null;
+  } finally {
+    try { reader.releaseLock(); } catch { /* already released/cancelled */ }
+  }
+
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  const contentType = response.headers?.get?.('content-type') || '';
+  if (contentType.split(';', 1)[0].trim().toLowerCase() === 'application/octet-stream') {
+    try {
+      for (let index = 0; index < bytes.length; index += 1) {
+        bytes[index] ^= new TextEncoder().encode('miruro/catalog')[index % 14];
+      }
+      const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
+      const reader2 = stream.getReader();
+      const decoder = new TextDecoder();
+      const parts = [];
+      while (true) {
+        const { value, done } = await reader2.read();
+        if (done) break;
+        parts.push(decoder.decode(value, { stream: true }));
+      }
+      parts.push(decoder.decode());
+      return JSON.parse(parts.join(''));
+    } catch {
+      return null;
+    }
+  }
+
+  try {
+    return JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    return null;
+  }
+}
+
+function titleFromCatalogItemV2(item, fallbackTitle) {
+  const title = item?.title;
+  if (title && typeof title === 'object') {
+    return String(title.english || title.romaji || title.native || '').trim();
+  }
+  return String(title || fallbackTitle || '').trim();
+}
+
+function scoreCatalogItemV2(item, requestedTitles) {
+  const names = [titleFromCatalogItemV2(item, '')].filter(Boolean);
+  let best = 0;
+  for (const name of names) {
+    const candidate = normalizeTitleV2(name);
+    if (!candidate) continue;
+    for (const requested of requestedTitles) {
+      const wanted = normalizeTitleV2(requested);
+      if (!wanted) continue;
+      if (candidate === wanted) best = Math.max(best, 100);
+      else if (candidate.startsWith(wanted) || wanted.startsWith(candidate)) {
+        best = Math.max(best, 83 - Math.min(18, Math.abs(candidate.length - wanted.length) / 6));
+      } else {
+        const left = new Set(candidate.split(' '));
+        const right = new Set(wanted.split(' '));
+        const common = [...left].filter((word) => right.has(word)).length;
+        best = Math.max(best, Math.round(common / Math.max(left.size, right.size, 1) * 72));
+      }
+    }
+  }
+  return best;
+}
+
+async function resolveMiruroInBrowserV2(entry) {
+  const media = buildMiruroPayloadV2(entry);
+  const key = new TextEncoder().encode('miruro/catalog');
+  const queries = media.titles.slice(0, 4);
+
+  for (const title of queries) {
+    const url = new URL('https://www.miruro.tv/api/v1/anime');
+    url.searchParams.set('q', title);
+    url.searchParams.set('limit', '15');
+    url.searchParams.set('sort', '-popularity');
+
+    let response;
+    try {
+      response = await fetch(url.toString(), {
+        method: 'GET',
+        mode: 'cors',
+        credentials: 'omit',
+        cache: 'no-store',
+        headers: { accept: '*/*' },
+      });
+    } catch {
+      continue;
+    }
+
+    const payload = await readBrowserCatalogV2(response);
+    if (!payload || !Array.isArray(payload.data)) continue;
+
+    const exact = payload.data.find((item) => {
+      const raw = item?.external_ids?.anilist;
+      const ids = Array.isArray(raw) ? raw : [raw];
+      return ids.some((id) => String(id) === String(media.mediaId));
+    });
+
+    const candidate = exact || [...payload.data]
+      .map((item) => ({ item, score: scoreCatalogItemV2(item, media.titles) }))
+      .filter(({ item }) => /^[A-Za-z0-9_-]{1,120}$/u.test(String(item?.id || '')) && !/^\d+$/u.test(String(item?.id || '')))
+      .sort((a, b) => b.score - a.score)[0]?.item;
+
+    if (!candidate) continue;
+
+    const opaqueId = String(candidate.id || '');
+    if (!/^[A-Za-z0-9_-]{1,120}$/u.test(opaqueId) || /^\d+$/u.test(opaqueId)) continue;
+
+    const routeTitle = titleFromCatalogItemV2(candidate, media.titles[0]);
+    if (!routeTitle) continue;
+
+    const slug = routeTitle.normalize('NFKD').toLocaleLowerCase('en')
+      .replace(/[\u0300-\u036f]/gu, '')
+      .replace(/[^a-z0-9]+/gu, '-')
+      .replace(/^-+|-+$/gu, '')
+      .slice(0, 180);
+
+    if (!slug) continue;
+    const watchUrl = 'https://www.miruro.tv/watch/' + opaqueId + '/' + slug;
+    return {
+      anilistMediaId: media.mediaId,
+      watchUrl,
+      title: routeTitle,
+      episodes: null,
+    };
+  }
+
+  throw new Error('Miruro could not be queried from the browser. The site may be blocking cross-site requests.');
+}
+
 async function readFunctionsErrorV2(error) {
   const status = Number(error?.context?.status ?? error?.statusCode ?? 0) || null;
   let body = null;
@@ -74,7 +229,23 @@ export async function resolveMiruroEpisodeUrlV2(client, entry, { storage: _stora
     throw new Error('The Miruro resolver is unavailable. Check the ListR Supabase configuration and try again.');
   }
 
-  const { data, error } = await client.functions.invoke(MIRURO_RESOLVER_FUNCTION_V2, { body: { media } });
+  let data = null;
+  let error = null;
+
+  // Miruro's server-facing API can be blocked by Cloudflare datacenter rules.
+  // Prefer a request from the user's browser, then retain the Supabase resolver as a fallback.
+  try {
+    const browserMatch = await resolveMiruroInBrowserV2(entry);
+    if (browserMatch?.watchUrl) {
+      const url = buildMiruroEpisodeUrlV2(browserMatch.watchUrl, episode);
+      if (!url) throw new Error('Miruro returned an invalid Watch page. Nothing was opened.');
+      return { url, watchUrl: browserMatch.watchUrl, episode, mediaId: media.mediaId };
+    }
+  } catch {
+    // Fall through to the server resolver for environments where direct browser CORS is unavailable.
+  }
+
+  ({ data, error } = await client.functions.invoke(MIRURO_RESOLVER_FUNCTION_V2, { body: { media } }));
   if (error) {
     const details = await readFunctionsErrorV2(error);
     if (details.status === 404) {
