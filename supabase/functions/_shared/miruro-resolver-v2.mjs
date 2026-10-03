@@ -161,28 +161,34 @@ export function extractMiruroCandidatesV2(html) {
   return [...candidates.values()];
 }
 
-export function extractMiruroAniListMatchV2(html, expectedMediaId, candidateWatchUrl = '') {
+export function extractMiruroAniListMatchV2(html, expectedMediaId, candidateWatchUrl = '', candidateInfoUrl = '') {
   const expectedId = Number(expectedMediaId);
   if (!Number.isSafeInteger(expectedId) || expectedId < 1) return null;
+  const source = String(html || '');
   let exactEntity = null;
-  for (const block of readJsonLdBlocksV2(html)) {
+  for (const block of readJsonLdBlocksV2(source)) {
     visitJsonLdV2(block, (node) => {
       const sameAs = Array.isArray(node.sameAs) ? node.sameAs : [node.sameAs];
       const hasExactId = sameAs.some((value) => {
-        const match = String(value || '').match(/(?:https?:)?\/\/(?:www\.)?anilist\.co\/anime\/(\d+)(?:[/?#]|$)/iu);
+        const match = String(value || '').match(/(?:https?:)?\/\/(?:www\.)?anilist\.co\/anime\/(\d+)(?:[\/?#]|$)/iu);
         return match && Number(match[1]) === expectedId;
       });
-      if (!hasExactId) return;
-      exactEntity = node;
+      if (hasExactId) exactEntity = node;
     });
   }
-  if (!exactEntity) return null;
-
-  const candidates = collectUrlsV2([
-    exactEntity.url,
-    exactEntity.mainEntityOfPage,
-    exactEntity.potentialAction,
-  ]);
+  const exactIdPattern = new RegExp(
+    '(?:https?:)?\\/\\/(?:www\\.)?anilist\\.co\\/anime\\/' + expectedId + '(?:[\\/?#\"\'&]|$)',
+    'iu',
+  );
+  const hasExactHtmlId = exactIdPattern.test(source);
+  let routeCarriesExactId = false;
+  try {
+    routeCarriesExactId = new RegExp('^\\/(?:info|watch)\\/' + expectedId + '\\/').test(new URL(candidateInfoUrl || candidateWatchUrl || 'https://www.miruro.tv/').pathname);
+  } catch { /* invalid route cannot carry a verified identity */ }
+  if (!exactEntity && !hasExactHtmlId && !routeCarriesExactId) return null;
+  const candidates = collectUrlsV2(exactEntity
+    ? [exactEntity.url, exactEntity.mainEntityOfPage, exactEntity.potentialAction]
+    : []);
   let canonical = null;
   for (const value of candidates) {
     const checked = safeWatchUrlV2(value);
@@ -190,15 +196,14 @@ export function extractMiruroAniListMatchV2(html, expectedMediaId, candidateWatc
   }
   canonical ||= safeWatchUrlV2(candidateWatchUrl);
   if (!canonical) return null;
-  const count = Number(exactEntity.numberOfEpisodes);
+  const count = Number(exactEntity?.numberOfEpisodes);
   return {
     anilistMediaId: expectedId,
     watchUrl: canonical,
-    title: String(exactEntity.name || ''),
+    title: String(exactEntity?.name || ''),
     episodes: Number.isSafeInteger(count) && count > 0 ? count : null,
   };
 }
-
 function titleScoreV2(candidateNames, requestedTitles) {
   let best = 0;
   for (const name of candidateNames) {
@@ -394,7 +399,19 @@ async function searchHtmlCandidatesV2(fetcher, titles) {
     .slice(0, MIRURO_RESOLVER_LIMITS_V2.candidates);
 }
 
-export async function resolveMiruroMatchV2(rawMedia, fetcher = fetch) {
+function directAniListIdCandidatesV2(media) {
+  const candidates = new Map();
+  for (const title of media.titles) {
+    const slug = slugifyTitleV2(title);
+    if (!slug) continue;
+    const infoUrl = safeInfoUrlV2('/info/' + media.mediaId + '/' + slug);
+    const watchUrl = safeWatchUrlV2('/watch/' + media.mediaId + '/' + slug);
+    if (infoUrl && watchUrl) candidates.set(infoUrl, { infoUrl, watchUrl, names: [title] });
+  }
+  return [...candidates.values()].slice(0, MIRURO_RESOLVER_LIMITS_V2.candidates);
+}
+
+  export async function resolveMiruroMatchV2(rawMedia, fetcher = fetch) {
   const media = validateRequestMediaV2(rawMedia);
   const queries = media.titles.slice(0, MIRURO_RESOLVER_LIMITS_V2.searchQueries);
   const catalogPages = await Promise.all(queries.map((title) => fetchCatalogPageV2(fetcher, title)));
@@ -414,13 +431,14 @@ export async function resolveMiruroMatchV2(rawMedia, fetcher = fetch) {
   let candidates = [...catalogCandidates.values()].slice(0, MIRURO_RESOLVER_LIMITS_V2.candidates);
   if (!candidates.length) candidates = [...titleCandidates.values()].slice(0, MIRURO_RESOLVER_LIMITS_V2.candidates);
 
-  // Older Miruro page variants may have server-rendered result links; these remain a fallback only.
+  // Try the current exact-ID route format before the legacy HTML-search fallback.
+  if (!candidates.length) candidates = directAniListIdCandidatesV2(media);
   if (!candidates.length) candidates = await searchHtmlCandidatesV2(fetcher, queries);
   if (!candidates.length) return null;
 
   const matches = await Promise.all(candidates.map(async (candidate) => {
     const html = await fetchHtmlV2(fetcher, candidate.infoUrl, MIRURO_RESOLVER_LIMITS_V2.timeoutMs);
-    return extractMiruroAniListMatchV2(html, media.mediaId, candidate.watchUrl);
+    return extractMiruroAniListMatchV2(html, media.mediaId, candidate.watchUrl, candidate.infoUrl);
   }));
   return matches.find((match) => match?.anilistMediaId === media.mediaId) || null;
 }
