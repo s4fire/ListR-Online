@@ -1,6 +1,15 @@
 # ListR Project State
 
-Last updated: 2026-10-02
+Last updated: 2026-10-03
+
+## Rollback Version 1
+- The current stable ListR repository and live GitHub Pages site are designated as **Rollback Version 1** before the UI/UX overhaul.
+- Repository: s4fire/ListR-Online, branch main.
+- Rollback commit: ff6f61b105d3485c95c82cb97ab75d04814421f0.
+- Production site: https://s4fire.github.io/ListR-Online/
+- GitHub Pages workflow run 37111821363 for this commit completed successfully.
+- If the UI overhaul introduces a regression, restore the repository/site to this checkpoint before continuing.
+- Manus workflow constraint: Manus must NOT modify GitHub. Manus only returns the updated project files. The user uploads/replaces those files in GitHub, and ChatGPT performs the GitHub commits and deployment.
 
 ## Repository
 - GitHub repository: s4fire/ListR-Online
@@ -71,8 +80,8 @@ Last updated: 2026-10-02
 ## Current planned work
 1. Confirm the Supabase Authentication URL Configuration for production.
 2. Manually verify the production auth flow with a newly generated confirmation email.
-3. Once auth/rebrand is fully verified, move to Text to List.
-4. Preserve all existing tracker, guest, auth, cloud-sync, AniList, and RLS behavior while adding new features.
+3. UI/UX overhaul and Home page work is now the next planned development phase.
+4. Preserve all existing tracker, guest, auth, cloud-sync, AniList, and RLS behavior while adding the UI overhaul.
 
 ## Text to List requirements (future feature)
 - Input can contain standalone anime names, in which case the user chooses the category and normal defaults apply:
