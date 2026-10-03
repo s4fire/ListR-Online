@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="sub-zero" data-layout="current">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -13,6 +13,7 @@
   <link rel="preconnect" href="https://cdn.jsdelivr.net">
   <link rel="stylesheet" href="./style.css">
   <link rel="stylesheet" href="./account.css">
+  <link rel="stylesheet" href="./appearance-v2.css">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script type="module" src="./script.js"></script>
 </head>
@@ -48,6 +49,7 @@
             <button class="profile-dropdown-link" type="button" data-view="friends">Friends</button>
             <button class="profile-dropdown-link" type="button" data-view="recommendations">Recommendations <span class="nav-count" id="nav-recommendations" hidden></span></button>
           </div>
+          <button class="appearance-menu-link" id="open-appearance" type="button"><span aria-hidden="true">◐</span> Appearance</button>
           <button class="sound-toggle" id="sound-toggle" type="button" aria-pressed="true" aria-label="Interface sounds on">
             <span class="sound-toggle-icon" aria-hidden="true">♪</span><span>Interface sounds</span><span id="sound-toggle-state" class="sound-toggle-state">On</span><span class="sound-toggle-track" aria-hidden="true"><span class="sound-toggle-thumb"></span></span>
           </button>
@@ -260,6 +262,32 @@
       <button id="auth-submit" class="button button-primary auth-submit" type="submit">Sign in</button>
     </form>
     <p class="auth-footnote">Passwords are handled by Supabase Auth and are never stored by this website.</p>
+  </dialog>
+
+  <dialog id="appearance-dialog" class="auth-dialog appearance-dialog" aria-labelledby="appearance-title">
+    <button class="dialog-close" id="close-appearance" type="button" aria-label="Close appearance settings">×</button>
+    <p class="eyebrow auth-eyebrow">MAKE LISTR YOURS</p>
+    <h2 id="appearance-title">Appearance</h2>
+    <p class="auth-intro">Choose a colour theme and page arrangement independently. A signed-in choice follows your ListR account; guest choices stay in this browser.</p>
+    <fieldset class="appearance-group">
+      <legend>Colour theme</legend>
+      <div class="appearance-options appearance-theme-options" role="group" aria-label="Colour theme">
+        <button class="appearance-option" type="button" data-appearance-theme="sub-zero" aria-pressed="true"><span class="appearance-swatch" data-swatch="sub-zero" aria-hidden="true"></span><span><strong>Sub-Zero</strong><small>Midnight blue</small></span></button>
+        <button class="appearance-option" type="button" data-appearance-theme="onyx" aria-pressed="false"><span class="appearance-swatch" data-swatch="onyx" aria-hidden="true"></span><span><strong>Onyx</strong><small>Charcoal silver</small></span></button>
+        <button class="appearance-option" type="button" data-appearance-theme="cosmic" aria-pressed="false"><span class="appearance-swatch" data-swatch="cosmic" aria-hidden="true"></span><span><strong>Cosmic</strong><small>Indigo and rose</small></span></button>
+        <button class="appearance-option" type="button" data-appearance-theme="emerald" aria-pressed="false"><span class="appearance-swatch" data-swatch="emerald" aria-hidden="true"></span><span><strong>Emerald</strong><small>Forest and mint</small></span></button>
+        <button class="appearance-option" type="button" data-appearance-theme="ghost" aria-pressed="false"><span class="appearance-swatch" data-swatch="ghost" aria-hidden="true"></span><span><strong>Ghost</strong><small>Calm light palette</small></span></button>
+      </div>
+    </fieldset>
+    <fieldset class="appearance-group">
+      <legend>Page layout</legend>
+      <div class="appearance-options appearance-layout-options" role="group" aria-label="Page layout">
+        <button class="appearance-option" type="button" data-appearance-layout="current" aria-pressed="true"><span class="layout-preview layout-preview-current" aria-hidden="true"><i></i><i></i><i></i></span><span><strong>Current</strong><small>Side rail and poster cards</small></span></button>
+        <button class="appearance-option" type="button" data-appearance-layout="reworked-old" aria-pressed="false"><span class="layout-preview layout-preview-old" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span><strong>Reworked Old</strong><small>Classic navigation and poster grid</small></span></button>
+        <button class="appearance-option" type="button" data-appearance-layout="new" aria-pressed="false"><span class="layout-preview layout-preview-new" aria-hidden="true"><i></i><i></i></span><span><strong>New</strong><small>Wide workspace and horizontal cards</small></span></button>
+      </div>
+    </fieldset>
+    <p id="appearance-sync-status" class="appearance-sync-status" role="status" aria-live="polite">Your guest appearance is saved in this browser.</p>
   </dialog>
 
   <dialog id="username-dialog" class="auth-dialog social-dialog" aria-labelledby="username-dialog-title">
