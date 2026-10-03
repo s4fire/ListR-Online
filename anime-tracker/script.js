@@ -107,12 +107,12 @@ function queueCloudChange(operation) {
       return;
     }
     const userId = currentUser.id;
-    setSyncStatus('Saving directly to your cloud library…', 'pending');
+    setSyncStatus('Saving directly…', 'pending');
     const request = operation.type === 'delete'
       ? removeUserEntry(supabaseClient, userId, operation.mediaId)
       : saveUserEntry(supabaseClient, userId, operation.entry, { ignoreDuplicates: operation.ignoreDuplicates });
     void request.then(() => {
-      if (currentUser?.id === userId) setSyncStatus('All changes saved to your cloud library.', 'ok');
+      if (currentUser?.id === userId) setSyncStatus('All changes saved.', 'ok');
     }).catch((error) => {
       if (currentUser?.id === userId) setSyncStatus(`${cloudErrorMessage(error)} This browser cannot retain a retry copy.`, 'error');
     });
@@ -124,7 +124,7 @@ function queueCloudChange(operation) {
     showToast('Could not queue this cloud change. Your account data was not confirmed as saved.');
     return;
   }
-  setSyncStatus(navigator.onLine === false ? 'Offline — changes are queued on this device.' : 'Saving changes to your cloud library…', 'pending');
+  setSyncStatus(navigator.onLine === false ? 'Offline — changes are queued on this device.' : 'Saving changes…', 'pending');
   void flushCloudQueue(currentUser.id);
 }
 
@@ -294,17 +294,17 @@ function renderHome() {
   $('#home-stat-episodes').textContent = stats.episodes.toLocaleString();
   $('#home-stat-hours').textContent = formatHours(stats.minutes);
   $('#home-account-note').textContent = signedIn
-    ? 'Your private library is loaded for this account.'
-    : 'Your guest library is saved in this browser.';
-  $('#home-account-title').textContent = signedIn ? 'Your library travels with you.' : 'Your guest library is ready.';
+    ? 'Your list is synced.'
+    : 'Your list is saved in this browser.';
+  $('#home-account-title').textContent = signedIn ? 'Your list is synced.' : 'Your guest list is ready.';
   $('#home-account-detail').textContent = signedIn
-    ? 'Your anime lists and episode progress are stored in your private ListR account. Your AniList connection remains optional.'
-    : 'Your list stays in this browser. Create an account to sync a separate private library across devices.';
-  $('#home-account-kicker').textContent = signedIn ? 'YOUR PRIVATE LISTR LIBRARY' : 'KEEP YOUR LIST CLOSE';
+    ? 'Your lists and progress are synced to your account. AniList is optional.'
+    : 'Your list stays in this browser. Sign in to sync it across devices.';
+  $('#home-account-kicker').textContent = signedIn ? 'ACCOUNT' : 'ACCOUNT';
   $('.home-account-actions').hidden = signedIn;
   $('#home-social-summary').textContent = signedIn
-    ? 'Find friends, compare watch-time stats, and share recommendations with your anime circle.'
-    : 'Sign in to choose a username, find friends, and share recommendations.';
+    ? 'Find friends, check stats, and send recs.'
+    : 'Sign in to add friends and send recs.';
   const recommendationCount = receivedRecommendations.length;
   const badge = $('#home-recommendation-count');
   badge.textContent = recommendationCount > 99 ? '99+' : String(recommendationCount);
@@ -493,7 +493,7 @@ function updateAccountBar() {
   $('#logout-button').hidden = !signedIn;
   $('#account-email').hidden = !signedIn;
   $('#account-email').textContent = signedIn ? currentUser.email : '';
-  $('#data-mode-label').textContent = signedIn ? 'Private cloud library' : 'Guest library · this browser';
+  $('#data-mode-label').textContent = signedIn ? 'Cloud list' : 'Guest list · this browser';
   $('#local-note').textContent = signedIn
     ? 'This account’s library is stored in Supabase. A private, per-account recovery cache is kept on this device.'
     : 'Guest lists stay in this browser. Sign in to sync a separate private cloud list.';
@@ -564,8 +564,8 @@ function enterGuest(message = '') {
   updateAccountBar();
   updateMigrationBanner();
   if (message) setSyncStatus(message, 'error');
-  else if (!supabaseClient) setSyncStatus('Cloud sign-in is unavailable; guest mode still works.', 'error');
-  else setSyncStatus('Guest list is stored in this browser.');
+  else if (!supabaseClient) setSyncStatus('Cloud sign-in is unavailable, but guest mode still works.', 'error');
+  else setSyncStatus('Your guest list is saved in this browser.');
   render();
   setAppReady();
 }
@@ -592,7 +592,7 @@ async function activateUser(user) {
   updateAccountBar();
   void loadMyProfileForMenu(userId).catch(() => {});
   updateMigrationBanner();
-  setSyncStatus('Loading your private cloud library…');
+  setSyncStatus('Loading your list…');
   render();
 
   const task = (async () => {
@@ -607,7 +607,7 @@ async function activateUser(user) {
       const cacheResult = writeCloudCache(storage, userId, merged);
       if (!cacheResult.ok) setSyncStatus('Cloud library loaded, but a recovery cache could not be saved here.', 'pending');
       else if (pending.length) setSyncStatus(`${pending.length} change${pending.length === 1 ? '' : 's'} waiting to sync.`, 'pending');
-      else setSyncStatus('Your cloud library is synced.', 'ok');
+      else setSyncStatus('Your list is synced.', 'ok');
       render();
       updateMigrationBanner();
       setAppReady();
@@ -671,7 +671,7 @@ function flushCloudQueue(userId) {
         pending = removed.operations;
       }
       if (currentUser?.id === uid) {
-        setSyncStatus(pending.length ? `${pending.length} change${pending.length === 1 ? '' : 's'} waiting to sync.` : 'All changes saved to your cloud library.', pending.length ? 'pending' : 'ok');
+        setSyncStatus(pending.length ? `${pending.length} change${pending.length === 1 ? '' : 's'} waiting to sync.` : 'All changes saved.', pending.length ? 'pending' : 'ok');
       }
     } finally {
       if (activeFlushes.get(uid) === task) activeFlushes.delete(uid);
@@ -1171,14 +1171,14 @@ function renderFriendRows() {
       : `<span class="relationship-label">Request sent</span><button class="button button-quiet" type="button" data-social-action="cancel-request" data-friendship-id="${escapeHtml(friend.friendship_id)}">Cancel</button>`;
     return `<div class="social-row"><div class="social-person"><strong>@${escapeHtml(friend.username)}</strong><small>${accepted ? 'ListR friend' : 'Waiting for a response'}</small></div><div class="social-actions">${action}</div></div>`;
   }).join('') : '';
-  if (!incoming.length) renderSocialEmpty(incomingContainer, 'No incoming friend requests.');
-  if (!others.length) renderSocialEmpty(friendsContainer, 'Your friends and outgoing requests will appear here.');
+  if (!incoming.length) renderSocialEmpty(incomingContainer, 'No friend requests yet.');
+  if (!others.length) renderSocialEmpty(friendsContainer, 'Your friends will show up here.');
 }
 
 function renderFriendSearchResults() {
   const container = $('#friend-search-results');
   if (!friendSearchResults.length) {
-    renderSocialEmpty(container, 'Search usernames to find ListR users.');
+    renderSocialEmpty(container, 'Search for a username.');
     return;
   }
   container.innerHTML = friendSearchResults.map((person) => {
@@ -1246,7 +1246,7 @@ function renderRecommendationSelection() {
     ? `<img class="recommend-selected-cover" src="${escapeHtml(cover)}" alt="" loading="lazy" referrerpolicy="no-referrer">`
     : '<span class="recommend-selected-cover-placeholder" aria-hidden="true">✦</span>';
   container.innerHTML = `<div class="recommend-selected-card">${image}<div class="recommend-selected-copy"><strong title="${escapeHtml(title)}">${escapeHtml(title)}</strong><small>${escapeHtml(format)}${escapeHtml(year)} · AniList #${escapeHtml(id)}</small></div></div>`;
-  $('#recommend-selection-hint').textContent = `Selected anime for @${recommendationTarget?.username || 'your friend'}`;
+  $('#recommend-selection-hint').textContent = `For @${recommendationTarget?.username || 'your friend'}`;
   button.disabled = !currentUser || !cloudLibraryReady || !recommendationTarget || recommendationSending;
   button.textContent = recommendationSending ? 'Sending…' : 'Send Recommendation';
 }
@@ -1284,11 +1284,11 @@ async function refreshSocialLists(userId) {
     updateRecommendationBadge();
   }
   if (activeView === 'friends') {
-    if (friendResult.status === 'fulfilled') setFriendsMessage('Search a username to find someone, or open a friend profile to see stats and send an anime recommendation.');
+    if (friendResult.status === 'fulfilled') setFriendsMessage('Search for someone by username, or open a friend to see their stats.');
     else setFriendsMessage(socialErrorMessageV2(friendResult.reason), 'error');
   }
   if (activeView === 'recommendations') {
-    if (recommendationResult.status === 'fulfilled') setRecommendationsMessage(receivedRecommendations.length ? `${receivedRecommendations.length} pending recommendation${receivedRecommendations.length === 1 ? '' : 's'} from your friends.` : 'No pending recommendations right now.');
+    if (recommendationResult.status === 'fulfilled') setRecommendationsMessage(receivedRecommendations.length ? `${receivedRecommendations.length} pending recommendation${receivedRecommendations.length === 1 ? '' : 's'} from your friends.` : 'No recs right now.');
     else setRecommendationsMessage(socialErrorMessageV2(recommendationResult.reason), 'error');
   }
 }
@@ -1502,7 +1502,7 @@ async function openRecommendationComposer() {
   renderRecommendationSearchResults();
   renderRecommendationSelection();
   $('#recommend-recipient').textContent = `Send to @${selectedFriend.username}. Only an AniList-verified anime can be recommended.`;
-  $('#recommend-search-message').textContent = 'Choose an anime from the AniList search results.';
+  $('#recommend-search-message').textContent = 'Search AniList and pick an anime.';
   $('#recommend-query').value = '';
   $('#recommend-anime-dialog').showModal();
   $('#recommend-query').focus();
@@ -1590,7 +1590,7 @@ async function acceptRecommendation(recommendationId) {
   const card = $(`[data-recommendation-id="${CSS.escape(String(recommendationId))}"]`);
   const button = card?.querySelector('[data-recommendation-action="accept"]');
   if (button) { button.disabled = true; button.textContent = 'Adding to ListR…'; }
-  setRecommendationsMessage('Adding this anime to your ListR Interested list…');
+  setRecommendationsMessage('Adding to Interested…');
   try {
     const result = await invokeAniListActionV2(supabaseClient, 'accept-recommendation', { recommendationId: String(recommendationId) });
     if (currentUser?.id !== uid) return;
