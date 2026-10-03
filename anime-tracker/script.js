@@ -245,7 +245,7 @@ async function openMiruroNext(entry, button) {
   const originalContent = button.innerHTML;
   button.disabled = true;
   button.setAttribute('aria-busy', 'true');
-  button.innerHTML = '<span class="watch-next-spinner" aria-hidden="true"></span><span class="watch-next-label">Finding exact match…</span>';
+  button.innerHTML = `<span class="watch-next-spinner" aria-hidden="true"></span><span class="watch-next-label">Finding ${escapeHtml(titleOf(entry))} on Miruro…</span>`;
 
   try {
     const result = await resolveMiruroEpisodeUrlV2(supabaseClient, entry, { storage });
