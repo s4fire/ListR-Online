@@ -241,32 +241,25 @@ function renderCard(entry) {
 
 async function openMiruroNext(entry, button) {
   if (!entry || entry.category !== 'watching') return;
-  const popup = window.open('about:blank', '_blank');
-  if (!popup) {
-    showToast('Your browser blocked the new tab. Allow pop-ups for ListR, then try Watch on Miruro again.', 'warning');
-    return;
-  }
-  try { popup.opener = null; } catch { /* the destination is still checked before navigation */ }
 
   const originalContent = button.innerHTML;
   button.disabled = true;
   button.setAttribute('aria-busy', 'true');
   button.innerHTML = '<span class="watch-next-spinner" aria-hidden="true"></span><span class="watch-next-label">Finding exact match…</span>';
+
   try {
     const result = await resolveMiruroEpisodeUrlV2(supabaseClient, entry, { storage });
     const latest = entries.get(String(entry.id));
     if (!latest || latest.category !== 'watching') {
-      popup.close();
       showToast('This anime is no longer in Watching, so Miruro was not opened.');
       return;
     }
     const episode = nextEpisodeNumberV2(latest);
     const url = buildMiruroEpisodeUrlV2(result.watchUrl, episode);
     if (!url) throw new Error('Miruro returned an invalid Watch link. Nothing was opened.');
-    popup.location.replace(url);
-    showToast(`Opening ${titleOf(latest)} on Miruro at episode ${episode}.`, 'success');
+
+    window.location.assign(url);
   } catch (error) {
-    try { popup.close(); } catch { /* browser may have closed the placeholder already */ }
     showToast(error?.message || 'Could not find an exact Miruro match. Nothing was opened.', 'error');
   } finally {
     if (button.isConnected) {
