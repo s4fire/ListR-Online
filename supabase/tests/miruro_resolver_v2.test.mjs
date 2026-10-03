@@ -121,18 +121,24 @@ test('catalog title fallback can resolve when Miruro omits the AniList mapping, 
   assert.equal(match?.watchUrl, watchUrl);
 });
 
-test('exact AniList-ID route remains valid when page HTML has no AniList JSON-LD', async () => {
-  const infoUrlDirect = 'https://www.miruro.tv/info/42/the-sample-anime-season-2';
-  const watchUrlDirect = 'https://www.miruro.tv/watch/42/the-sample-anime-season-2';
-  const html = '<html><head><title>The Sample Anime Season 2</title></head><body><h1>The Sample Anime Season 2</h1></body></html>';
+test('an actual Miruro opaque watch route is preserved with episode query parameters', async () => {
+  const opaqueWatchUrl = 'https://www.miruro.tv/watch/YHwdMp1LKUDN0FUzpQG338Gu1STKfW4w/kaiju-no-8';
+  assert.equal(extractMiruroAniListMatchV2(infoHtml(42), 42, opaqueWatchUrl)?.watchUrl, opaqueWatchUrl);
+  assert.match(opaqueWatchUrl, /\/watch\/[^/]+\/kaiju-no-8$/u);
+});
 
-  const match = extractMiruroAniListMatchV2(html, 42, watchUrlDirect, infoUrlDirect);
-  assert.deepEqual(match, {
-    anilistMediaId: 42,
-    watchUrl: watchUrlDirect,
-    title: '',
-    episodes: null,
-  });
+test('resolver never fabricates a numeric AniList-ID watch route when Miruro discovery is unavailable', async () => {
+  const requested = [];
+  const fetcher = async (input) => {
+    const url = new URL(input);
+    requested.push(url);
+    if (url.pathname === '/api/v1/anime') return new Response('unavailable', { status: 503 });
+    if (url.pathname === '/search') return new Response('<html><body>No matching anime</body></html>', { status: 200 });
+    return new Response('', { status: 404 });
+  };
+  assert.equal(await resolveMiruroMatchV2({ mediaId: 42, titles: ['The Sample Anime Season 2'] }, fetcher), null);
+  assert.equal(requested.some((url) => /^\/watch\/42\//u.test(url.pathname)), false);
+  assert.equal(requested.some((url) => /^\/info\/42\//u.test(url.pathname)), false);
 });
 
 test('legacy server-rendered search links remain a fallback and are still verified against exact JSON-LD', async () => {
