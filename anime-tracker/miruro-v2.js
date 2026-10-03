@@ -271,3 +271,5 @@ export async function resolveMiruroEpisodeUrlV2(client, entry, { storage: _stora
   if (!url) throw new Error('Miruro returned an invalid Watch page. Nothing was opened.');
   return { url, watchUrl, episode, mediaId: media.mediaId };
 }
+
+// Browser-side Miruro discovery prefers the user's network context before the server fallback.
