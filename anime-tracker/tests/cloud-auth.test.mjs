@@ -37,12 +37,16 @@ const media = (id, episodes = 12) => ({
   description: 'Cached metadata'
 });
 
-test('registration validation checks email, password, and matching confirmation', () => {
-  assert.match(validateAuthFields({ mode: 'register', email: '', password: 'pass', confirmPassword: 'pass' }), /email/i);
-  assert.match(validateAuthFields({ mode: 'register', email: 'bad-email', password: 'pass', confirmPassword: 'pass' }), /valid email/i);
-  assert.match(validateAuthFields({ mode: 'register', email: 'user@example.com', password: '', confirmPassword: '' }), /password/i);
-  assert.match(validateAuthFields({ mode: 'register', email: 'user@example.com', password: 'secret', confirmPassword: 'different' }), /do not match/i);
-  assert.equal(validateAuthFields({ mode: 'register', email: 'user@example.com', password: 'secret', confirmPassword: 'secret' }), '');
+test('registration validation checks email, required username, password, and matching confirmation', () => {
+  const valid = { mode: 'register', email: 'user@example.com', username: 'Anime_Fan7', password: 'secret', confirmPassword: 'secret' };
+  assert.match(validateAuthFields({ ...valid, email: '', username: 'Anime_Fan7' }), /email/i);
+  assert.match(validateAuthFields({ ...valid, email: 'bad-email' }), /valid email/i);
+  assert.match(validateAuthFields({ ...valid, username: '' }), /username/i);
+  assert.match(validateAuthFields({ ...valid, username: 'ab' }), /3–20/i);
+  assert.match(validateAuthFields({ ...valid, username: '_bad_name' }), /start with/i);
+  assert.match(validateAuthFields({ ...valid, password: '' }), /password/i);
+  assert.match(validateAuthFields({ ...valid, confirmPassword: 'different' }), /do not match/i);
+  assert.equal(validateAuthFields(valid), '');
 });
 
 test('login validation accepts a valid email and password without a confirmation field', () => {

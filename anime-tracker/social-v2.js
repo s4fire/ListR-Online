@@ -11,8 +11,8 @@ export function normalizeUsernameV2(value) {
 export function validateUsernameV2(value) {
   const normalized = normalizeUsernameV2(value);
   if (!normalized) return { ok: false, username: normalized, message: 'Choose a username for Friends features.' };
-  if (!/^[^\s\p{C}]{3,20}$/u.test(normalized)) {
-    return { ok: false, username: normalized, message: 'Use 3–20 characters with no spaces or control characters.' };
+  if (!/^[a-z0-9][a-z0-9_]{2,19}$/u.test(normalized)) {
+    return { ok: false, username: normalized, message: 'Use 3–20 letters, numbers, or underscores. Start with a letter or number.' };
   }
   return { ok: true, username: normalized, message: '' };
 }
@@ -40,7 +40,7 @@ export async function setUsernameV2(client, rawUsername) {
 
 export async function searchListRUsersV2(client, rawQuery) {
   const query = normalizeUsernameV2(rawQuery);
-  if (query.length < 3 || /[\s\p{C}]/u.test(query)) return [];
+  if (query.length < 3 || !/^[a-z0-9_]+$/u.test(query)) return [];
   const data = await rpc(client, USER_SEARCH_RPC_V2, { p_username_prefix: query });
   return Array.isArray(data) ? data.filter((row) => row?.user_id && row.username) : [];
 }

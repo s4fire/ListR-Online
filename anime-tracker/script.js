@@ -31,7 +31,7 @@ let authEpoch = 0;
 let cloudLibraryReady = false;
 let authMode = 'login';
 const activeFlushes = new Map();
-let activeView = 'watching';
+let activeView = 'home';
 let searchResults = [];
 let searchController = null;
 let toastTimer = null;
@@ -60,11 +60,11 @@ const socialLoads = new Map();
 const profileLoads = new Map();
 let profileMenuErrorUserId = null;
 let selectedRecommendationMedia = null;
-let recommendationReminders = new Map();
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const collectionView = $('#collection-view');
+const homeView = $('#home-view');
 const searchView = $('#search-view');
 const statsView = $('#stats-view');
 const friendsView = $('#friends-view');
@@ -217,7 +217,7 @@ function renderCard(entry) {
 }
 
 function moveOptions(current) {
-  return `<option value="" selected disabled>Move from ${CATEGORIES[current]}</option>` + Object.entries(CATEGORIES).filter(([key]) => key !== current).map(([key, label]) => `<option value="${key}">Move to ${label}</option>`).join('');
+  return Object.entries(CATEGORIES).filter(([key]) => key !== current).map(([key, label]) => `<option value="${key}">Move to ${label}</option>`).join('');
 }
 
 function renderCollection() {
@@ -264,11 +264,38 @@ function renderStats() {
   }
 }
 
+function renderHome() {
+  if (!homeView) return;
+  const stats = calculateStats([...entries.values()]);
+  const signedIn = Boolean(currentUser);
+  $('#home-total').textContent = String(entries.size);
+  $('#home-stat-total').textContent = String(entries.size);
+  $('#home-stat-watching').textContent = String(stats.counts.watching);
+  $('#home-stat-completed').textContent = String(stats.counts.completed);
+  $('#home-stat-episodes').textContent = stats.episodes.toLocaleString();
+  $('#home-account-note').textContent = signedIn
+    ? 'Your private library is loaded for this account.'
+    : 'Your guest library is saved in this browser.';
+  $('#home-account-title').textContent = signedIn ? 'Your library travels with you.' : 'Your guest library is ready.';
+  $('#home-account-detail').textContent = signedIn
+    ? 'Your anime lists and episode progress are stored in your private ListR account. Your AniList connection remains optional.'
+    : 'Your list stays in this browser. Create an account to sync a separate private library across devices.';
+  $('#home-account-kicker').textContent = signedIn ? 'YOUR PRIVATE LISTR LIBRARY' : 'KEEP YOUR LIST CLOSE';
+  $('.home-account-actions').hidden = signedIn;
+  $('#home-social-summary').textContent = signedIn
+    ? 'Find friends, compare watch-time stats, and share recommendations with your anime circle.'
+    : 'Sign in to choose a username, find friends, and share recommendations.';
+  const recommendationCount = receivedRecommendations.length;
+  const badge = $('#home-recommendation-count');
+  badge.textContent = recommendationCount > 99 ? '99+' : String(recommendationCount);
+  badge.hidden = recommendationCount === 0;
+}
+
 function render() {
   renderCounts();
   renderStats();
+  renderHome();
   if (['watching', 'completed', 'interested'].includes(activeView)) renderCollection();
-  reconcileRecommendationReminders();
 }
 
 function renderResults() {
@@ -318,27 +345,40 @@ function updateProfileMenu() {
 }
 
 function setView(view, { updateHash = true } = {}) {
-  const valid = ['watching', 'completed', 'interested', 'search', 'stats', 'friends', 'recommendations'];
-  if (!valid.includes(view)) view = 'watching';
+  const valid = ['home', 'watching', 'completed', 'interested', 'search', 'stats', 'friends', 'recommendations'];
+  if (!valid.includes(view)) view = 'home';
   setProfileMenuOpen(false);
   activeView = view;
+  homeView.hidden = view !== 'home';
   collectionView.hidden = !['watching', 'completed', 'interested'].includes(view);
   searchView.hidden = view !== 'search';
   statsView.hidden = view !== 'stats';
   friendsView.hidden = view !== 'friends';
   recommendationsView.hidden = view !== 'recommendations';
-  $$('.nav-link').forEach((button) => button.classList.toggle('is-active', button.dataset.view === view));
-  $$('.profile-dropdown-link').forEach((button) => button.classList.toggle('is-active', button.dataset.view === view));
+  $$('.nav-link').forEach((button) => {
+    const isCurrent = button.dataset.view === view;
+    button.classList.toggle('is-active', isCurrent);
+    if (isCurrent) button.setAttribute('aria-current', 'page');
+    else button.removeAttribute('aria-current');
+  });
+  $$('.profile-dropdown-link').forEach((button) => {
+    const isCurrent = button.dataset.view === view;
+    button.classList.toggle('is-active', isCurrent);
+    if (isCurrent) button.setAttribute('aria-current', 'page');
+    else button.removeAttribute('aria-current');
+  });
   if (['watching', 'completed', 'interested'].includes(view)) renderCollection();
   if (view === 'stats') renderStats();
   if (view === 'friends' || view === 'recommendations') void initializeSocialForUser(currentUser?.id, view);
   if (updateHash) window.location.hash = view === 'search' ? 'add' : view;
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true;
+  window.scrollTo({ top: 0, behavior: reducedMotion ? 'auto' : 'smooth' });
 }
 
-function showToast(message) {
+function showToast(message, tone = 'info') {
   const toast = $('#toast');
   toast.textContent = message;
+  toast.dataset.tone = tone;
   toast.classList.add('is-visible');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => toast.classList.remove('is-visible'), 3200);
@@ -347,6 +387,7 @@ function showToast(message) {
 function setSearchMessage(message, type = '') {
   searchMessage.textContent = message;
   searchMessage.className = `message ${type}`.trim();
+  searchMessage.setAttribute('aria-busy', String(/searching|loading|refreshing/i.test(message)));
 }
 
 // ----------------------------- Accounts / cloud ----------------------------
@@ -357,6 +398,7 @@ function setSyncStatus(message, type = '') {
   const status = $('#sync-status');
   status.textContent = message;
   status.className = `sync-status ${type ? `is-${type}` : ''}`.trim();
+  status.setAttribute('aria-busy', String(type === 'pending' && /loading|importing|syncing/i.test(message)));
 }
 
 function cloudErrorMessage(error) {
@@ -523,7 +565,6 @@ async function activateUser(user) {
   if (currentUser?.id !== userId) { resetAniListPanel(); resetSocialState(); }
   activatingUserId = userId;
   currentUser = { id: userId, email: String(user.email || '') };
-  recommendationReminders = readRecommendationReminders(userId);
   cloudLibraryReady = false;
   entries.clear();
   updateAccountBar();
@@ -785,8 +826,8 @@ async function runAniListSync(userId, { automatic = false } = {}) {
   anilistSyncing = true;
   $('#anilist-progress-label').textContent = readOutbox(storage, uid).length
     ? 'Saving queued ListR changes before AniList sync…'
-    : (automatic ? 'Refreshing AniList library after the sync interval…' : 'Importing your AniList anime library…');
-  setAniListMessage('Syncing with AniList… importing your anime and calculating ListR categories from episode progress.');
+    : (automatic ? 'Refreshing AniList progress after the sync interval…' : 'Fetching your AniList anime progress…');
+  setAniListMessage('Syncing with AniList… your existing ListR anime will be checked; no new records will be created.');
   renderAniListPanel();
 
   try {
@@ -804,57 +845,28 @@ async function runAniListSync(userId, { automatic = false } = {}) {
     const fetched = await invokeAniListActionV2(supabaseClient, 'sync');
     const progress = validateProgressResponseV2(fetched);
     if (currentUser?.id !== uid) return false;
+    $('#anilist-progress-label').textContent = `Applying progress to existing ListR anime (${progress.length} AniList entries checked)…`;
+    setAniListMessage(`Found ${progress.length.toLocaleString()} AniList entries. Updating only matching anime already in your ListR library…`);
 
-    const categoryFor = (item) => {
-      const watched = Number(item.progress);
-      const total = Number(item.media?.episodes);
-      if (watched <= 0) return 'interested';
-      if (String(item.media?.status || '') === 'RELEASING') return 'watching';
-      if (Number.isSafeInteger(total) && total > 0 && watched >= total) return 'completed';
-      return 'watching';
-    };
-
-    $('#anilist-progress-label').textContent = `Importing ${progress.length.toLocaleString()} AniList entries into ListR…`;
-    setAniListMessage(`Found ${progress.length.toLocaleString()} AniList anime. Matching existing entries and importing new ones…`);
-
-    let importedCount = 0;
-    let changedCount = 0;
-    const changedEntries = [];
-
-    for (const item of progress) {
-      const id = String(item.mediaId);
-      const category = categoryFor(item);
-      const prior = entries.get(id);
-      const next = createEntry(item.media, category, prior);
-      next.watched = clampWatched(item.progress, item.media?.episodes);
-      if (prior) next.addedAt = prior.addedAt;
-
-      const changed = !prior
-        || prior.category !== next.category
-        || Number(prior.watched) !== Number(next.watched)
-        || JSON.stringify(prior.meta) !== JSON.stringify(next.meta);
-
-      if (!changed) continue;
-      entries.set(id, next);
-      changedEntries.push(next);
-      changedCount += 1;
-      if (!prior) importedCount += 1;
+    const { data, error } = await supabaseClient.rpc('sync_anilist_progress_v2', { p_progress: progress });
+    if (error) {
+      const saveError = new Error('AniList was read, but ListR could not save the progress. Apply the v2 database migration and try again.');
+      saveError.code = 'sync_database_failed';
+      throw saveError;
     }
-
     if (currentUser?.id !== uid) return false;
+    const counts = Array.isArray(data) ? data[0] : data;
+    const matchedCount = Number(counts?.matched_count);
+    const updatedCount = Number(counts?.updated_count);
+    if (!Number.isSafeInteger(matchedCount) || matchedCount < 0 || !Number.isSafeInteger(updatedCount) || updatedCount < 0) {
+      throw new Error('ListR returned an invalid sync result. The cloud update may need to be checked before retrying.');
+    }
+
+    const progressById = new Map(progress.map((item) => [String(item.mediaId), item.progress]));
+    for (const entry of entries.values()) {
+      if (progressById.has(String(entry.id))) entry.watched = clampWatched(progressById.get(String(entry.id)), entry.meta?.episodes);
+    }
     persist();
-    for (const entry of changedEntries) {
-      queueCloudChange({ type: 'upsert', mediaId: entry.id, entry });
-    }
-    if (changedEntries.length) {
-      await flushCloudQueue(uid);
-      if (currentUser?.id !== uid) return false;
-      if (readOutbox(storage, uid).length) {
-        const saveError = new Error('AniList was read, but some imported anime are still waiting to reach your ListR cloud library.');
-        saveError.code = 'sync_database_failed';
-        throw saveError;
-      }
-    }
     render();
 
     let completionRecorded = true;
@@ -868,16 +880,10 @@ async function runAniListSync(userId, { automatic = false } = {}) {
 
     if (currentUser?.id !== uid) return false;
     anilistStatusUserId = uid;
-    if (changedCount > 0) {
-      setAniListMessage(
-        `AniList sync complete: imported ${importedCount.toLocaleString()} new anime and updated ${(changedCount - importedCount).toLocaleString()} existing anime${completionRecorded ? '.' : '; the changes are saved, but its sync time could not be recorded.'}`,
-        completionRecorded ? 'success' : 'error'
-      );
+    if (updatedCount > 0) {
+      setAniListMessage(`Updated watched progress for ${updatedCount.toLocaleString()} existing anime${completionRecorded ? '.' : '; the progress is saved, but its sync time could not be recorded.'}`, completionRecorded ? 'success' : 'error');
     } else {
-      setAniListMessage(
-        `AniList sync complete. Nothing changed — your ListR library already matches AniList progress.${completionRecorded ? '' : ' Sync time could not be recorded.'}`,
-        completionRecorded ? 'success' : 'error'
-      );
+      setAniListMessage(`Nothing changed. ${matchedCount.toLocaleString()} existing ListR anime matched AniList progress; no new records were created.${completionRecorded ? '' : ' Sync time could not be recorded.'}`, completionRecorded ? 'success' : 'error');
     }
     if (!completionRecorded) anilistLastSyncedAt = null;
     updateAniListState('connected', { lastSyncedAt: anilistLastSyncedAt, username: anilistUsername });
@@ -926,8 +932,8 @@ function setAuthMode(mode) {
   const registering = authMode === 'register';
   $('#auth-tab-login').classList.toggle('is-active', !registering);
   $('#auth-tab-register').classList.toggle('is-active', registering);
-  $('#auth-tab-login').setAttribute('aria-selected', String(!registering));
-  $('#auth-tab-register').setAttribute('aria-selected', String(registering));
+  $('#auth-tab-login').setAttribute('aria-pressed', String(!registering));
+  $('#auth-tab-register').setAttribute('aria-pressed', String(registering));
   $('#confirm-password-field').hidden = !registering;
   $('#auth-confirm-password').required = registering;
   $('#register-username-field').hidden = !registering;
@@ -1073,21 +1079,24 @@ function setFriendsMessage(message, type = '') {
   const element = $('#friends-message');
   element.textContent = message;
   element.className = `message ${type ? 'social-message-error' : ''}`.trim();
+  element.setAttribute('aria-busy', String(/searching|loading|refreshing/i.test(message)));
 }
 
 function setRecommendationsMessage(message, type = '') {
   const element = $('#recommendations-message');
   element.textContent = message;
   element.className = `message ${type ? 'social-message-error' : ''}`.trim();
+  element.setAttribute('aria-busy', String(/searching|loading|refreshing/i.test(message)));
 }
 
 function updateRecommendationBadge() {
   const badge = $('#nav-recommendations');
-  const count = receivedRecommendations.filter((recommendation) => !recommendationReminders.has(String(recommendation.recommendation_id))).length;
+  const count = receivedRecommendations.length;
   badge.textContent = count > 99 ? '99+' : String(count);
   badge.classList.toggle('has-pending', count > 0);
   badge.setAttribute('aria-label', count ? `${count} pending recommendation${count === 1 ? '' : 's'}` : 'No pending recommendations');
   badge.hidden = count === 0;
+  renderHome();
   if (activeView === 'recommendations') renderRecommendations();
 }
 
@@ -1102,7 +1111,6 @@ function resetSocialState() {
   recommendationTarget = null;
   recommendationSearchResults = [];
   selectedRecommendationMedia = null;
-  recommendationReminders = new Map();
   recommendationSending = false;
   recommendationSearchController?.abort();
   for (const selector of ['#username-dialog', '#friend-profile-dialog', '#recommend-anime-dialog']) {
@@ -1162,137 +1170,23 @@ function renderFriendSearchResults() {
   }).join('');
 }
 
-const RECOMMENDATION_REMINDER_KEY = 'listr-recommendation-reminders-v1';
-
-function readRecommendationReminders(userId) {
-  const result = new Map();
-  if (!userId || !storage) return result;
-  try {
-    const raw = storage.getItem(RECOMMENDATION_REMINDER_KEY + ':' + String(userId));
-    const parsed = raw ? JSON.parse(raw) : [];
-    if (Array.isArray(parsed)) {
-      for (const reminder of parsed) {
-        if (reminder?.recommendationId && reminder?.mediaId) {
-          result.set(String(reminder.recommendationId), {
-            recommendationId: String(reminder.recommendationId),
-            mediaId: String(reminder.mediaId),
-            title: String(reminder.title || 'this anime'),
-          });
-        }
-      }
-    }
-  } catch {}
-  return result;
-}
-
-function writeRecommendationReminders(userId) {
-  if (!userId || !storage) return;
-  try {
-    const value = [...recommendationReminders.values()];
-    if (value.length) storage.setItem(RECOMMENDATION_REMINDER_KEY + ':' + String(userId), JSON.stringify(value));
-    else storage.removeItem(RECOMMENDATION_REMINDER_KEY + ':' + String(userId));
-  } catch {}
-}
-
-function renderRecommendationReminders() {
-  const container = $('#recommendation-reminders');
-  if (!container) return;
-  const reminders = [...recommendationReminders.values()];
-  if (!reminders.length) {
-    container.innerHTML = '';
-    try { if (container.matches(':popover-open')) container.hidePopover(); } catch {}
-    return;
-  }
-  container.innerHTML = reminders.map((reminder) =>
-    '<article class="recommendation-reminder" data-recommendation-reminder="' + escapeHtml(reminder.recommendationId) + '">' +
-      '<div class="recommendation-reminder-copy">' +
-        '<span class="section-kicker">RECOMMENDED ANIME</span>' +
-        '<strong>' + escapeHtml(reminder.title) + '</strong>' +
-        '<p>Add it to your ListR library to clear this reminder.</p>' +
-      '</div>' +
-      '<button class="button button-primary recommendation-reminder-action" type="button" data-reminder-action="add" data-media-title="' + escapeHtml(reminder.title) + '">Add anime</button>' +
-    '</article>'
-  ).join('');
-  try {
-    if (typeof container.showPopover === 'function' && !container.matches(':popover-open')) container.showPopover();
-  } catch {}
-}
-
-function reconcileRecommendationReminders() {
-  if (!currentUser || !recommendationReminders.size) {
-    renderRecommendationReminders();
-    return;
-  }
-  let changed = false;
-  for (const [recommendationId, reminder] of recommendationReminders) {
-    if (!entries.has(String(reminder.mediaId))) continue;
-    recommendationReminders.delete(recommendationId);
-    receivedRecommendations = receivedRecommendations.filter((item) => String(item.recommendation_id) !== recommendationId);
-    changed = true;
-    void dismissRecommendationV2(supabaseClient, recommendationId).catch(() => {});
-  }
-  if (changed) {
-    writeRecommendationReminders(currentUser.id);
-    updateRecommendationBadge();
-    if (activeView === 'recommendations') renderRecommendations();
-  }
-  renderRecommendationReminders();
-}
-
-function startRecommendationReminder(recommendation) {
-  const recommendationId = String(recommendation.recommendation_id);
-  const mediaId = String(recommendation.anilist_media_id);
-  const title = getTitle(recommendation.anime_metadata?.title, mediaId);
-  if (entries.has(mediaId)) {
-    void dismissRecommendationV2(supabaseClient, recommendationId).catch(() => {});
-    receivedRecommendations = receivedRecommendations.filter((item) => String(item.recommendation_id) !== recommendationId);
-    updateRecommendationBadge();
-    renderRecommendations();
-    return;
-  }
-  recommendationReminders.set(recommendationId, { recommendationId, mediaId, title });
-  if (currentUser) writeRecommendationReminders(currentUser.id);
-  receivedRecommendations = receivedRecommendations.filter((item) => String(item.recommendation_id) !== recommendationId);
-  renderRecommendations();
-  updateRecommendationBadge();
-  renderRecommendationReminders();
-}
-
-function openRecommendationReminderSearch(title) {
-  $('#add-category').value = 'interested';
-  $('#anime-query').value = title;
-  setView('search');
-  $('#search-form').requestSubmit();
-}
-
 function renderRecommendations() {
   const container = $('#recommendations-list');
-  const visibleRecommendations = receivedRecommendations.filter((recommendation) => !recommendationReminders.has(String(recommendation.recommendation_id)));
-  const hasRecommendations = visibleRecommendations.length > 0;
-  container.innerHTML = visibleRecommendations.map((recommendation) => {
+  const hasRecommendations = receivedRecommendations.length > 0;
+  container.innerHTML = receivedRecommendations.map((recommendation) => {
+    const media = recommendation.anime_metadata || {};
     const id = String(recommendation.anilist_media_id);
-    const localMeta = entries.get(id)?.meta || {};
-    const storedMeta = recommendation.anime_metadata || {};
-    const media = {
-      ...localMeta,
-      ...storedMeta,
-      title: { ...(localMeta.title || {}), ...(storedMeta.title || {}) },
-      coverImage: { ...(localMeta.coverImage || {}), ...(storedMeta.coverImage || {}) },
-    };
     const title = getTitle(media.title, id);
     const format = media.format ? String(media.format).replaceAll('_', ' ') : 'Anime';
-    const description = media.description
-      ? String(media.description).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
-      : '';
     const date = Date.parse(recommendation.created_at);
     const sent = Number.isFinite(date) ? new Date(date).toLocaleDateString() : 'Recently';
     const sender = recommendation.sender_username ? `@${recommendation.sender_username}` : 'A ListR friend';
-    const descriptionMarkup = description ? `<p class="result-desc recommendation-desc">${escapeHtml(description)}</p>` : '';
-    return `<article class="anime-card recommendation-card" data-recommendation-id="${escapeHtml(recommendation.recommendation_id)}"><div class="cover-wrap">${imageMarkup(media, title)}<span class="cover-badge"><i></i>RECOMMENDED</span></div><div class="card-body"><h3 class="card-title" title="${escapeHtml(title)}">${escapeHtml(title)}</h3><p class="card-subtitle">${escapeHtml(format)} · AniList #${escapeHtml(id)}</p>${descriptionMarkup}<p class="recommend-sender">From ${escapeHtml(sender)}</p><p class="recommendation-date">Received ${escapeHtml(sent)}</p><div class="recommend-actions"><button class="button button-primary" type="button" data-recommendation-action="accept" data-id="${escapeHtml(recommendation.recommendation_id)}">Accept</button><button class="button button-quiet" type="button" data-recommendation-action="dismiss" data-id="${escapeHtml(recommendation.recommendation_id)}">Deny</button></div></div></article>`;
+    return `<article class="anime-card recommendation-card" data-recommendation-id="${escapeHtml(recommendation.recommendation_id)}"><div class="cover-wrap">${imageMarkup(media, title)}<span class="cover-badge"><i></i>RECOMMENDED</span></div><div class="card-body"><h3 class="card-title" title="${escapeHtml(title)}">${escapeHtml(title)}</h3><p class="card-subtitle">${escapeHtml(format)} · AniList #${escapeHtml(id)}</p><p class="recommend-sender">From ${escapeHtml(sender)}</p><p class="recommendation-date">Received ${escapeHtml(sent)}</p><div class="recommend-actions"><button class="button button-primary" type="button" data-recommendation-action="accept" data-id="${escapeHtml(recommendation.recommendation_id)}">Add to Interested</button><button class="button button-quiet" type="button" data-recommendation-action="dismiss" data-id="${escapeHtml(recommendation.recommendation_id)}">Dismiss</button></div></div></article>`;
   }).join('');
   $('#recommendations-empty').hidden = hasRecommendations || !currentUser;
   if (!hasRecommendations) container.innerHTML = '';
 }
+
 function renderRecommendationSearchResults() {
   const container = $('#recommend-search-results');
   if (!recommendationSearchResults.length) { container.innerHTML = ''; return; }
@@ -1341,9 +1235,8 @@ async function refreshRecommendationBadge(userId = currentUser?.id) {
   try {
     const results = await listReceivedRecommendationsV2(supabaseClient);
     if (currentUser?.id !== uid) return;
-    receivedRecommendations = results.filter((recommendation) => !recommendationReminders.has(String(recommendation.recommendation_id)));
+    receivedRecommendations = results;
     updateRecommendationBadge();
-    reconcileRecommendationReminders();
   } catch {
     // Social schema is an optional additive migration; never block the anime tracker.
     if (currentUser?.id === uid) {
@@ -1365,9 +1258,8 @@ async function refreshSocialLists(userId) {
     renderFriendRows();
   }
   if (recommendationResult.status === 'fulfilled') {
-    receivedRecommendations = recommendationResult.value.filter((recommendation) => !recommendationReminders.has(String(recommendation.recommendation_id)));
+    receivedRecommendations = recommendationResult.value;
     updateRecommendationBadge();
-    reconcileRecommendationReminders();
   }
   if (activeView === 'friends') {
     if (friendResult.status === 'fulfilled') setFriendsMessage('Search a username to find someone, or open a friend profile to see stats and send an anime recommendation.');
@@ -1384,26 +1276,7 @@ async function loadMyProfile(userId) {
 }
 
 async function initializeSocialForUser(userId, requestedView = activeView) {
-  if (userId === 'pending') userId = null;
   if (!userId) {
-    if (!supabaseClient) {
-      const message = 'Sign in to ListR to use Friends and Recommendations. Your guest library remains separate.';
-      if (requestedView === 'friends') setFriendsMessage(message, 'error');
-      if (requestedView === 'recommendations') setRecommendationsMessage(message, 'error');
-      if (!$('#auth-dialog').open) openAuthDialog('login');
-      return;
-    }
-    await new Promise((resolve) => window.setTimeout(resolve, 500));
-    if (currentUser?.id) return initializeSocialForUser(currentUser.id, requestedView);
-    try {
-      const { data, error } = await supabaseClient.auth.getSession();
-      if (!error && data?.session?.user) {
-        await activateUser(data.session.user);
-        if (currentUser?.id) return initializeSocialForUser(currentUser.id, requestedView);
-      }
-    } catch {}
-    await new Promise((resolve) => window.setTimeout(resolve, 350));
-    if (currentUser?.id) return initializeSocialForUser(currentUser.id, requestedView);
     const message = 'Sign in to ListR to use Friends and Recommendations. Your guest library remains separate.';
     if (requestedView === 'friends') setFriendsMessage(message, 'error');
     if (requestedView === 'recommendations') setRecommendationsMessage(message, 'error');
@@ -1678,12 +1551,78 @@ function applyRecommendationLocally(recommendation, category = 'interested') {
   render();
 }
 
-function acceptRecommendation(recommendationId) {
-  if (!currentUser || !cloudLibraryReady) return;
+function safeRecommendationErrorMessage(error) {
+  const message = String(error?.context?.message || error?.message || 'ListR could not complete this recommendation.');
+  if (/failed to send a request|fetch|network|timeout/i.test(message)) {
+    return 'The ListR recommendation service is unavailable. Check your connection and try again; your library remains safe.';
+  }
+  return message.length <= 180 ? message : `${message.slice(0, 177)}…`;
+}
+
+async function acceptRecommendation(recommendationId) {
+  if (!currentUser || !cloudLibraryReady || socialBusy) return;
   const recommendation = receivedRecommendations.find((item) => String(item.recommendation_id) === String(recommendationId));
   if (!recommendation) return;
-  startRecommendationReminder(recommendation);
-  setRecommendationsMessage('Accepted. ListR will keep a reminder in the bottom-right until you add the anime to your list.');
+  const uid = currentUser.id;
+  try {
+    const status = await invokeAniListActionV2(supabaseClient, 'status');
+    if (currentUser?.id !== uid) return;
+    if (status.state !== 'connected') {
+      updateAniListState(status.state === 'error' ? 'error' : 'not_connected', {
+        message: status.message || 'Connect AniList before accepting a recommendation to Planning.',
+        messageType: 'error',
+      });
+      setRecommendationsMessage('Connect AniList first. Add to Interested will also add the anime to AniList Planning.', 'error');
+      if (window.confirm('Connect or reconnect AniList now? The recommendation will remain here until both ListR and AniList have confirmed acceptance.')) await connectAniList();
+      return;
+    }
+  } catch (error) {
+    setRecommendationsMessage(safeAniListErrorMessageV2(error), 'error');
+    return;
+  }
+
+  socialBusy = true;
+  const card = $(`[data-recommendation-id="${CSS.escape(String(recommendationId))}"]`);
+  const button = card?.querySelector('[data-recommendation-action="accept"]');
+  if (button) { button.disabled = true; button.textContent = 'Adding…'; }
+  setRecommendationsMessage('Saving the anime to ListR and then confirming its AniList Planning status…');
+  try {
+    const result = await invokeAniListActionV2(supabaseClient, 'accept-recommendation', { recommendationId: String(recommendationId) });
+    if (currentUser?.id !== uid) return;
+    if (!result || result.state !== 'accepted') throw new Error('AniList and ListR did not both confirm this recommendation. It remains available to retry.');
+    if (!result.alreadyInListR || entries.has(String(recommendation.anilist_media_id))) applyRecommendationLocally(recommendation, 'interested');
+    else {
+      try {
+        const remote = await loadUserEntries(supabaseClient, uid);
+        if (currentUser?.id === uid) {
+          entries.clear();
+          for (const entry of remote) entries.set(String(entry.id), entry);
+          writeCloudCache(storage, uid, remote);
+          render();
+        }
+      } catch { /* the cloud write already succeeded; keep the existing local view */ }
+    }
+    receivedRecommendations = receivedRecommendations.filter((item) => String(item.recommendation_id) !== String(recommendationId));
+    renderRecommendations();
+    updateRecommendationBadge();
+    const existingNote = result.alreadyInListR && result.existingCategory !== 'interested'
+      ? ` Its existing ListR entry was moved from ${categoryName(result.existingCategory || 'the previous category')} to Interested; its watched count and metadata were preserved.`
+      : result.alreadyInListR
+        ? ' It was already in ListR Interested, so no duplicate was created.'
+      : ' It is now in your ListR Interested list.';
+    const planningNote = result.anilistState === 'already_planning' ? ' It was already in AniList Planning.' : ' It was added to AniList Planning.';
+    setRecommendationsMessage(`Recommendation accepted.${existingNote}${planningNote}`);
+    showToast('Recommendation accepted. ListR and AniList confirmed the update.');
+  } catch (error) {
+    if (currentUser?.id !== uid) return;
+    if (['recommendation_anilist_write_failed', 'recommendation_finalize_failed'].includes(error?.code)) {
+      applyRecommendationLocally(recommendation, 'interested');
+    }
+    setRecommendationsMessage(safeAniListErrorMessageV2(error), 'error');
+  } finally {
+    socialBusy = false;
+    if (currentUser?.id === uid) renderRecommendations();
+  }
 }
 
 async function dismissRecommendation(recommendationId) {
@@ -1708,37 +1647,21 @@ async function refreshCurrentSocialPage() {
   else await refreshRecommendationBadge(uid);
 }
 
-function initializeAccount() {
-  if (!supabaseClient) {
-    enterGuest('Supabase could not be loaded. Guest mode is available; sign-in needs the account service.');
-    return;
-  }
-
-  // Supabase initializes auth automatically when the client is created and emits
-  // INITIAL_SESSION when that work finishes. Calling getSession() here creates a
-  // second startup path that can race the client's own initialization/refresh work
-  // and leave the UI waiting forever on older auth-js versions.
-  //
-  // Subscribe once and let Supabase deliver the authoritative initial session.
-  // Keep all follow-up Supabase calls outside the auth callback's synchronous turn.
+async function initializeAccount() {
+  if (!supabaseClient) { enterGuest('Supabase could not be loaded. Guest mode is available; sign-in needs the account service.'); return; }
   try {
+    const { data, error } = await supabaseClient.auth.getSession();
+    if (error) throw error;
     supabaseClient.auth.onAuthStateChange((event, session) => {
       window.setTimeout(() => {
-        try {
-          if (event === 'SIGNED_OUT') {
-            enterGuest();
-          } else if (session?.user) {
-            void activateUser(session.user);
-          } else if (event === 'INITIAL_SESSION') {
-            enterGuest();
-          }
-        } catch (error) {
-          enterGuest('Could not restore the account session: ' + cloudErrorMessage(error) + ' Guest data remains separate.');
-        }
+        if (event === 'SIGNED_OUT') enterGuest();
+        else if (session?.user) void activateUser(session.user);
       }, 0);
     });
+    if (data?.session?.user) await activateUser(data.session.user);
+    else enterGuest();
   } catch (error) {
-    enterGuest('Could not initialize cloud sign-in: ' + cloudErrorMessage(error) + ' Guest data remains separate.');
+    enterGuest(`Could not restore your cloud session: ${cloudErrorMessage(error)} Guest data remains separate.`);
   }
 }
 
@@ -1747,23 +1670,25 @@ function addMedia(media, category) {
   const id = String(media.id);
   const existing = entries.get(id);
   if (existing) {
-    showToast(`Already in ${categoryName(existing.category)} — duplicates are not added.`);
+    showToast(`Already in ${categoryName(existing.category)} — duplicates are not added.`, 'info');
     renderResults();
     return false;
   }
   entries.set(id, createEntry(media, category));
   persistEntry(entries.get(id)); render();
-  showToast(`${getTitle(media.title, id)} added to ${categoryName(category)}.`);
+  showToast(`${getTitle(media.title, id)} added to ${categoryName(category)}.`, 'success');
   return true;
 }
 
-function setWatched(id, rawValue) {
+function setWatched(id, rawValue, { announce = false } = {}) {
   const entry = entries.get(String(id));
   if (!entry || entry.category === 'interested') return;
   const number = Number(rawValue);
   const value = clampWatched(Number.isFinite(number) ? Math.floor(number) : 0, entry.meta?.episodes);
+  const changed = value !== entry.watched;
   entry.watched = value;
   persistEntry(entry); render();
+  if (changed && announce) showToast('Episode progress updated.', 'success');
 }
 
 function moveEntry(id, category) {
@@ -1772,7 +1697,7 @@ function moveEntry(id, category) {
   entry.category = category;
   entry.watched = clampWatched(entry.watched, entry.meta?.episodes);
   persistEntry(entry); render();
-  showToast(`Moved to ${categoryName(category)}.`);
+  showToast(`Moved to ${categoryName(category)}.`, 'success');
 }
 
 // ----------------------------- Event handling ------------------------------
@@ -1818,7 +1743,7 @@ $('#username-form').addEventListener('submit', async (event) => {
     $('#username-dialog').close();
     await refreshSocialLists(uid);
     if (currentUser?.id !== uid) return;
-    showToast(`Your ListR username is @${socialProfile.username}.`);
+    showToast(`Your ListR username is @${socialProfile.username}.`, 'success');
   } catch (error) {
     if (currentUser?.id !== uid) return;
     const message = error?.code === '23505'
@@ -1866,13 +1791,8 @@ $('#send-recommendation').addEventListener('click', () => { void sendAnimeRecomm
 $('#recommendations-list').addEventListener('click', (event) => {
   const button = event.target.closest('[data-recommendation-action]');
   if (!button) return;
-  if (button.dataset.recommendationAction === 'accept') acceptRecommendation(button.dataset.id);
+  if (button.dataset.recommendationAction === 'accept') void acceptRecommendation(button.dataset.id);
   if (button.dataset.recommendationAction === 'dismiss') void dismissRecommendation(button.dataset.id);
-});
-$('#recommendation-reminders').addEventListener('click', (event) => {
-  const button = event.target.closest('[data-reminder-action="add"]');
-  if (!button) return;
-  openRecommendationReminderSearch(button.dataset.mediaTitle || 'Anime');
 });
 $('#refresh-recommendations').addEventListener('click', () => { if (currentUser) void initializeSocialForUser(currentUser.id, 'recommendations'); });
 window.addEventListener('online', () => {
@@ -1892,6 +1812,15 @@ document.addEventListener('visibilitychange', () => {
 });
 
 $$('.nav-link').forEach((button) => button.addEventListener('click', () => setView(button.dataset.view)));
+$('#home-open-library').addEventListener('click', () => setView('watching'));
+$('#home-shortcut-library').addEventListener('click', () => setView('watching'));
+$('#home-open-stats').addEventListener('click', () => setView('stats'));
+$('#home-discover').addEventListener('click', () => setView('search'));
+$('#home-shortcut-discover').addEventListener('click', () => setView('search'));
+$('#home-open-friends').addEventListener('click', () => setView('friends'));
+$('#home-open-recommendations').addEventListener('click', () => setView('recommendations'));
+$('#home-sign-in').addEventListener('click', () => openAuthDialog('login'));
+$('#home-create-account').addEventListener('click', () => openAuthDialog('register'));
 ['open-search', 'hero-add', 'empty-add'].forEach((id) => $(`#${id}`).addEventListener('click', () => setView('search')));
 $('#list-search').addEventListener('input', renderCollection);
 $('#sort-order').addEventListener('change', renderCollection);
@@ -1905,7 +1834,10 @@ $('#search-form').addEventListener('submit', async (event) => {
   if (searchController) searchController.abort();
   searchController = new AbortController();
   const button = $('.search-submit');
+  const originalButtonContent = button.innerHTML;
   button.disabled = true;
+  button.setAttribute('aria-busy', 'true');
+  button.textContent = 'Searching…';
   searchResults = [];
   renderResults();
   setSearchMessage('Searching AniList…');
@@ -1919,6 +1851,8 @@ $('#search-form').addEventListener('submit', async (event) => {
     if (error.name !== 'AbortError') setSearchMessage(error.message || 'Search failed. Your saved list is still available.', 'error');
   } finally {
     button.disabled = false;
+    button.removeAttribute('aria-busy');
+    button.innerHTML = originalButtonContent;
   }
 });
 
@@ -1939,14 +1873,16 @@ collectionGrid.addEventListener('click', (event) => {
   if (button.dataset.action === 'increase') setWatched(entry.id, (entry.watched || 0) + 1);
   if (button.dataset.action === 'decrease') setWatched(entry.id, (entry.watched || 0) - 1);
   if (button.dataset.action === 'remove') {
-    entries.delete(String(entry.id)); persistDeletedEntry(entry.id); render(); showToast(`${titleOf(entry)} removed from your list.`);
+    const title = titleOf(entry);
+    if (!window.confirm(`Remove “${title}” from your ${categoryName(entry.category)} list? Its saved watch progress will also be removed.`)) return;
+    entries.delete(String(entry.id)); persistDeletedEntry(entry.id); render(); showToast(`${title} removed from your list.`, 'success');
   }
 });
 
 collectionGrid.addEventListener('change', (event) => {
   const target = event.target;
   if (target.dataset.action === 'move') moveEntry(target.dataset.id, target.value);
-  if (target.dataset.action === 'edit-count') setWatched(target.dataset.id, target.value);
+  if (target.dataset.action === 'edit-count') setWatched(target.dataset.id, target.value, { announce: true });
 });
 
 collectionGrid.addEventListener('keydown', (event) => {
@@ -1957,15 +1893,18 @@ collectionGrid.addEventListener('keydown', (event) => {
 
 window.addEventListener('hashchange', () => {
   const hash = window.location.hash.replace('#', '');
-  if (hash === 'add') setView('search');
+  if (!hash || hash === 'home') setView('home');
+  else if (hash === 'add') setView('search');
   else if (hash === 'stats') setView('stats');
   else if (hash === 'friends' || hash === 'recommendations') setView(hash);
   else if (CATEGORIES[hash]) setView(hash);
+  else setView('home');
 });
 
 // ----------------------------- Initial render ------------------------------
 const initialHash = window.location.hash.replace('#', '');
-if (initialHash === 'add') activeView = 'search';
+if (!initialHash || initialHash === 'home') activeView = 'home';
+else if (initialHash === 'add') activeView = 'search';
 else if (initialHash === 'stats') activeView = 'stats';
 else if (initialHash === 'friends' || initialHash === 'recommendations') activeView = initialHash;
 else if (CATEGORIES[initialHash]) activeView = initialHash;

@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#0d0c13">
+  <meta name="theme-color" content="#101116">
   <meta name="referrer" content="no-referrer">
-  <meta name="description" content="Track anime with AniList search, personal episode progress, and optional secure cloud sync.">
+  <meta name="description" content="ListR brings your anime library, episode progress, discovery, and friends together.">
   <title>ListR — Anime Tracker</title>
   <link rel="preconnect" href="https://graphql.anilist.co">
   <link rel="preconnect" href="https://s4.anilist.co">
@@ -16,14 +16,16 @@
   <script type="module" src="./script.js"></script>
 </head>
 <body class="auth-loading">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
   <div id="app-loading" class="app-loading" role="status">Checking your saved library…</div>
   <div class="app-shell">
     <header class="topbar">
-      <a class="brand" href="#watching" aria-label="ListR Anime Tracker home">
+      <a class="brand" href="#home" aria-label="ListR Home" data-home-link>
         <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
         <span>ListR<span class="brand-dot">.</span></span>
       </a>
       <nav class="primary-nav" aria-label="Main navigation">
+        <button class="nav-link" type="button" data-view="home">Home</button>
         <button class="nav-link is-active" type="button" data-view="watching">Watching <span class="nav-count" id="nav-watching">0</span></button>
         <button class="nav-link" type="button" data-view="completed">Completed <span class="nav-count" id="nav-completed">0</span></button>
         <button class="nav-link" type="button" data-view="interested">Interested <span class="nav-count" id="nav-interested">0</span></button>
@@ -79,7 +81,7 @@
         <progress aria-label="AniList progress synchronization in progress"></progress>
       </div>
       <p id="anilist-last-sync" class="anilist-last-sync">Last successful sync: never</p>
-      <p class="anilist-disclosure">AniList does not support OAuth scopes. ListR keeps the token in Supabase and reads progress. Only choosing “Add to Interested” on a received recommendation can explicitly add that anime to AniList Planning.</p>
+      <p class="anilist-disclosure">AniList does not support OAuth scopes. ListR keeps the token in Supabase and reads progress into your ListR library. ListR never writes recommendation acceptance or tracker changes to an AniList list.</p>
     </section>
 
     <section id="migration-banner" class="migration-banner" aria-labelledby="migration-title" hidden>
@@ -87,7 +89,64 @@
       <div class="migration-actions"><button class="button button-primary" id="import-guest" type="button">Import local anime</button><button class="button button-quiet" id="dismiss-import" type="button">Later</button></div>
     </section>
 
-    <main>
+    <main id="main-content" tabindex="-1">
+      <section class="page-view home-view" id="home-view" aria-labelledby="home-title" hidden>
+        <div class="home-hero">
+          <div class="home-hero-copy">
+            <p class="eyebrow"><span class="live-dot"></span> YOUR ANIME, YOUR WAY</p>
+            <h1 id="home-title">Every story has <span>a place here.</span></h1>
+            <p class="home-hero-subtitle">Find your next favourite, keep your progress close, and share the series that stay with you.</p>
+            <div class="home-hero-actions">
+              <button class="button button-primary" id="home-open-library" type="button">Open your library <span aria-hidden="true">↗</span></button>
+              <button class="button button-quiet" id="home-discover" type="button">Explore anime</button>
+            </div>
+            <p id="home-account-note" class="home-account-note" role="status" aria-live="polite">Your guest library is saved in this browser.</p>
+          </div>
+          <div class="home-hero-art" aria-hidden="true">
+            <div class="home-orbit home-orbit-one"></div><div class="home-orbit home-orbit-two"></div>
+            <div class="home-orbit-core"><span>✦</span></div>
+            <div class="home-art-note"><span>YOUR NEXT CHAPTER</span><strong>starts here</strong></div>
+            <div class="home-art-count"><span>STORIES TRACKED</span><strong id="home-total">0</strong></div>
+          </div>
+        </div>
+
+        <div class="home-section-heading">
+          <div><span class="section-kicker">YOUR SPACE AT A GLANCE</span><h2>A little progress, all in one place.</h2></div>
+          <button class="text-action" id="home-open-stats" type="button">View full stats <span aria-hidden="true">→</span></button>
+        </div>
+        <div class="home-stat-grid" aria-label="Library summary">
+          <article class="home-stat-card home-stat-total"><span class="home-stat-icon" aria-hidden="true">◈</span><span class="home-stat-label">IN YOUR LIBRARY</span><strong id="home-stat-total">0</strong><small>anime tracked</small></article>
+          <article class="home-stat-card"><span class="home-stat-icon icon-purple" aria-hidden="true">◉</span><span class="home-stat-label">WATCHING</span><strong id="home-stat-watching">0</strong><small>currently in progress</small></article>
+          <article class="home-stat-card"><span class="home-stat-icon icon-pink" aria-hidden="true">✦</span><span class="home-stat-label">COMPLETED</span><strong id="home-stat-completed">0</strong><small>stories seen through</small></article>
+          <article class="home-stat-card"><span class="home-stat-icon icon-blue" aria-hidden="true">☆</span><span class="home-stat-label">EPISODES WATCHED</span><strong id="home-stat-episodes">0</strong><small>one at a time</small></article>
+        </div>
+
+        <div class="home-section-heading home-shortcut-heading">
+          <div><span class="section-kicker">PICK UP WHERE YOU LIKE</span><h2>Your next step.</h2></div>
+        </div>
+        <div class="home-shortcut-grid">
+          <article class="home-shortcut-card">
+            <span class="shortcut-symbol shortcut-symbol-library" aria-hidden="true">▤</span>
+            <div><h3>Make progress</h3><p>Update episodes, move a series, or see what is next in your lists.</p></div>
+            <button class="text-action" id="home-shortcut-library" type="button">Go to library <span aria-hidden="true">→</span></button>
+          </article>
+          <article class="home-shortcut-card">
+            <span class="shortcut-symbol shortcut-symbol-discover" aria-hidden="true">⌕</span>
+            <div><h3>Find a new favourite</h3><p>Search AniList and add a series with its real metadata.</p></div>
+            <button class="text-action" id="home-shortcut-discover" type="button">Browse anime <span aria-hidden="true">→</span></button>
+          </article>
+          <article class="home-shortcut-card home-shortcut-social">
+            <span class="shortcut-symbol shortcut-symbol-social" aria-hidden="true">✧</span>
+            <div><h3>Watch together</h3><p id="home-social-summary">Find friends and share recommendations with your anime circle.</p></div>
+            <div class="home-social-actions"><button class="text-action" id="home-open-friends" type="button">Friends <span aria-hidden="true">→</span></button><button class="text-action" id="home-open-recommendations" type="button">Recommendations <span id="home-recommendation-count" class="home-mini-count" hidden></span><span aria-hidden="true">→</span></button></div>
+          </article>
+        </div>
+        <section id="home-account-card" class="home-account-card" aria-label="Account status">
+          <div><span class="section-kicker" id="home-account-kicker">KEEP YOUR LIST CLOSE</span><h2 id="home-account-title">Your guest library is ready.</h2><p id="home-account-detail">Your list stays in this browser. Create an account to sync a separate private library across devices.</p></div>
+          <div class="home-account-actions"><button class="button button-quiet" id="home-sign-in" type="button">Sign in</button><button class="button button-primary" id="home-create-account" type="button">Create account</button></div>
+        </section>
+      </section>
+
       <section class="page-view" id="collection-view" aria-labelledby="collection-title">
         <div class="hero">
           <div class="hero-copy">
@@ -123,7 +182,6 @@
       <section class="page-view social-view" id="friends-view" aria-labelledby="friends-title" hidden>
         <div class="subpage-heading"><p class="eyebrow">WATCH TOGETHER</p><h1 id="friends-title">Your anime <span>circle.</span></h1><p>Find ListR users by username, send friend requests, and share recommendations.</p></div>
         <div class="social-toolbar">
-          <button class="button button-primary" id="add-friend" type="button">＋ Add Friend</button>
           <button class="button button-quiet" id="edit-username" type="button" hidden>Set username</button>
           <button class="button button-quiet" id="refresh-friends" type="button">↻ Refresh friends</button>
         </div>
@@ -140,7 +198,7 @@
       </section>
 
       <section class="page-view social-view" id="recommendations-view" aria-labelledby="recommendations-title" hidden>
-        <div class="subpage-heading"><p class="eyebrow">A FRIEND THOUGHT YOU’D LOVE</p><h1 id="recommendations-title">Stories worth <span>sharing.</span></h1><p>Anime friends have sent your way. Accept to get a reminder to add it to your ListR library, or deny it.</p></div>
+        <div class="subpage-heading"><p class="eyebrow">A FRIEND THOUGHT YOU’D LOVE</p><h1 id="recommendations-title">Stories worth <span>sharing.</span></h1><p>Anime friends have sent your way. Accept to add it to ListR Interested; your AniList account is never changed.</p></div>
         <div class="social-toolbar"><button class="button button-quiet" id="refresh-recommendations" type="button">↻ Refresh recommendations</button></div>
         <p id="recommendations-message" class="message" role="status" aria-live="polite">Sign in to see recommendations sent to you.</p>
         <div id="recommendations-list" class="anime-grid social-anime-grid"></div>
@@ -182,14 +240,14 @@
     <p class="eyebrow auth-eyebrow">YOUR LIST, WHEREVER YOU WATCH</p>
     <h2 id="auth-title">Welcome back.</h2>
     <p id="auth-intro" class="auth-intro">Sign in to load your private library from the cloud.</p>
-    <div class="auth-tabs" role="tablist" aria-label="Account action">
-      <button id="auth-tab-login" class="auth-tab is-active" type="button" role="tab" aria-selected="true">Sign in</button>
-      <button id="auth-tab-register" class="auth-tab" type="button" role="tab" aria-selected="false">Create account</button>
+    <div class="auth-tabs" role="group" aria-label="Account action">
+      <button id="auth-tab-login" class="auth-tab is-active" type="button" aria-pressed="true">Sign in</button>
+      <button id="auth-tab-register" class="auth-tab" type="button" aria-pressed="false">Create account</button>
     </div>
     <form id="auth-form" novalidate>
       <label class="auth-field" for="auth-email">Email<input id="auth-email" name="email" type="email" autocomplete="email" required maxlength="254"></label>
       <label id="register-username-field" class="auth-field" for="auth-username" hidden>Username<input id="auth-username" name="username" type="text" autocomplete="username" minlength="3" maxlength="20" autocapitalize="none" spellcheck="false" aria-describedby="username-help"></label>
-      <p id="username-help" class="auth-footnote username-help" hidden>Friends can find you by this unique username. Use 3–20 characters; spaces and control characters are not allowed. Usernames are case-insensitive.</p>
+      <p id="username-help" class="auth-footnote username-help" hidden>Friends can find you by this unique username. Use 3–20 letters, numbers, or underscores; it is case-insensitive.</p>
       <label class="auth-field" for="auth-password">Password<input id="auth-password" name="password" type="password" autocomplete="current-password" required></label>
       <label id="confirm-password-field" class="auth-field" for="auth-confirm-password" hidden>Confirm password<input id="auth-confirm-password" name="confirmPassword" type="password" autocomplete="new-password"></label>
       <p id="auth-message" class="auth-message" role="status" aria-live="polite"></p>
@@ -222,7 +280,6 @@
     <div class="recommend-footer"><p id="recommend-selection-hint">Choose a result to enable sending.</p><button id="send-recommendation" class="button button-primary" type="button" disabled>Send Recommendation</button></div>
   </dialog>
 
-  <div id="recommendation-reminders" class="recommendation-reminders" aria-live="polite" aria-label="Accepted anime reminders"></div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <noscript><div class="noscript">ListR needs JavaScript enabled to search AniList and manage your tracker.</div></noscript>
 </body>

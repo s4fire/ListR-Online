@@ -218,3 +218,123 @@
   .recommend-footer{padding-top:6px}
 }
 @media(prefers-reduced-motion:reduce){.profile-dropdown{animation:none}}
+
+
+/* ListR shared account and social surfaces. */
+.app-loading { color: #d9ccf5; }
+.app-loading::before {
+  width: 19px;
+  height: 19px;
+  margin-bottom: 13px;
+  border: 2px solid rgba(187,161,250,.22);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  content: "";
+  animation: listr-loading-spin .8s linear infinite;
+}
+@keyframes listr-loading-spin { to { transform: rotate(360deg); } }
+.account-bar {
+  border-color: rgba(214,220,237,.1);
+  border-radius: 13px;
+  background: rgba(18,23,32,.9);
+  box-shadow: 0 5px 19px rgba(0,0,0,.1);
+}
+.account-mark { color: #ccb8ff; }
+.sync-status { color: #9da3af; }
+.sync-status.is-error { color: #f0a8ba; }
+.sync-status.is-pending { color: #e4c89b; }
+.sync-status.is-ok { color: #a1d8bb; }
+.migration-banner { border-color: rgba(187,161,250,.25); background: linear-gradient(105deg,rgba(43,37,57,.87),rgba(20,24,33,.96)); }
+.anilist-panel { border-color: rgba(187,161,250,.2); background: linear-gradient(110deg,rgba(30,32,45,.95),rgba(17,22,30,.98)); }
+.auth-dialog {
+  width: min(460px, calc(100vw - 28px));
+  max-height: min(90vh, 780px);
+  max-height: min(90dvh, 780px);
+  overscroll-behavior: contain;
+  border-color: #414958;
+  border-radius: 19px;
+  background: linear-gradient(150deg,#1a202a,#11151c 75%);
+  box-shadow: 0 28px 100px rgba(0,0,0,.65);
+}
+.auth-dialog::backdrop { background: rgba(5,7,11,.77); backdrop-filter: blur(7px); }
+.auth-dialog[open] { animation: dialog-arrive .19s ease-out both; }
+@keyframes dialog-arrive { from { opacity: 0; transform: translateY(8px) scale(.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
+.dialog-close { border-color: #3a4351; background: #202733; transition: color .15s ease, background .15s ease, border-color .15s ease; }
+.dialog-close:hover { border-color: #78829a; background: #2a3341; }
+.auth-tabs { border-color: #333d4b; background: #10151c; }
+.auth-tab { min-height: 38px; transition: color .16s ease, background .16s ease; }
+.auth-tab.is-active { background: #302a3e; color: #eee4ff; }
+.auth-field { color: #d0d0da; font-size: 11px; }
+.auth-field input {
+  border-color: #35404d;
+  border-radius: 9px;
+  background: #10151c;
+  transition: border-color .16s ease, box-shadow .16s ease;
+}
+.auth-field input:focus { border-color: #a38bd8; box-shadow: 0 0 0 3px rgba(187,161,250,.12); }
+.auth-message { min-height: 20px; color: #a9a9b6; font-size: 11px; }
+.auth-message.is-error { color: #f1aabb; }
+.auth-message.is-success { color: #a3dfbd; }
+.auth-footnote { color: #8b919e; font-size: 10px; }
+.social-panel, .stats-panel { border-color: rgba(214,220,237,.1); background: linear-gradient(145deg,#171d27,#121720); }
+.social-row { border-color: rgba(214,220,237,.08); background: rgba(255,255,255,.022); transition: border-color .16s ease, background .16s ease; }
+.social-row:hover { border-color: rgba(187,161,250,.2); background: rgba(187,161,250,.035); }
+.social-person strong { color: #f0eff6; }
+.social-person small { color: #a1a2ad; }
+.social-empty { border-color: #3b4552; color: #a0a2ad; background: rgba(255,255,255,.012); }
+.social-dialog { border-color: #424b5b; }
+.friend-stats { border-color: #394353; background: #121821; }
+.friend-stat { background: #1b2430; }
+.friend-stat strong { color: #f4f0f9; }
+.friend-stat span { color: #a2a5b0; }
+.recommendation-card .recommend-sender { color: #b1b1bf; }
+.recommendation-date { color: #a1a1af; }
+.profile-toggle { border-color: rgba(187,161,250,.42); background: linear-gradient(145deg,#232737,#151922); }
+.profile-toggle:hover, .profile-toggle[aria-expanded="true"] { border-color: #c3aaff; background: #2c2c3d; }
+.profile-dropdown { border-color: #465061; background: linear-gradient(145deg,#222733,#151922); }
+.profile-dropdown-caption { color: #a1a4b0; }
+#profile-menu-username { color: #f4f1f8; }
+.profile-dropdown-link { color: #c0c1cb; }
+.profile-dropdown-link:hover, .profile-dropdown-link.is-active { background: #303040; color: #f3eaff; }
+.recommend-dialog[open] { border-color: #4a5061; background: linear-gradient(150deg,#1a202a,#11151c 75%); }
+.recommend-search .field-with-icon { background: #10151c; }
+.recommend-search-message { color: #a7a7b3; }
+.recommend-dialog .recommend-results { scrollbar-color: #545b6b #151a22; scrollbar-width: thin; }
+.recommend-result { border-color: rgba(214,220,237,.1); background: #171d27; transition: border-color .16s ease, background .16s ease; }
+.recommend-result:hover, .recommend-result:focus-within { border-color: rgba(187,161,250,.36); }
+.recommend-result-copy small { color: #a3a3b0; }
+.recommend-result.is-selected { border-color: rgba(187,161,250,.68); background: linear-gradient(100deg,rgba(82,67,111,.34),#171d27); }
+.recommend-selected { border-color: rgba(214,220,237,.11); background: #121821; }
+.recommend-selection-empty, .recommend-footer p { color: #a0a0ae; }
+.recommend-selected-copy strong { color: #f2eff7; }
+.recommend-selected-copy small { color: #a6a6b2; }
+.nav-count.has-pending { background: #c8afff; color: #211a31; }
+.toast { z-index: 60; }
+
+@media (max-width: 760px) {
+  .account-bar { border-radius: 11px; }
+  .account-identity { white-space: normal; }
+  .account-email { max-width: 128px; }
+  .social-row { gap: 9px; }
+  .social-actions .button, .profile-actions .button { min-height: 36px; }
+  .recommend-dialog[open] { width: calc(100vw - 18px); padding-right: 14px; padding-left: 14px; }
+  .recommend-dialog .recommend-results { scrollbar-gutter: auto; }
+  .recommend-footer { align-items: flex-end; }
+  .recommend-footer p { max-width: 43%; }
+  #send-recommendation { min-height: 40px; }
+}
+@media (max-width: 380px) {
+  .auth-dialog { padding: 25px 17px; }
+  .account-bar { gap: 7px; }
+  .account-actions { gap: 5px; }
+  .account-button { padding-inline: 7px; }
+  .recommend-dialog[open] { padding-right: 11px; padding-left: 11px; }
+  .recommend-result { gap: 6px; }
+  .recommend-result .button { min-width: 54px; padding-inline: 6px; }
+  .recommend-footer { gap: 4px; }
+  #send-recommendation { padding-inline: 7px; font-size: 9px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-loading::before { animation: none; }
+  .auth-dialog[open] { animation: none; }
+}

@@ -47,10 +47,9 @@ function mockClient(handler) {
   };
 }
 
-test('usernames normalize case/whitespace and allow special characters within 3–20 characters', () => {
-  assert.deepEqual(validateUsernameV2('  Anime_Fan7! '), { ok: true, username: 'anime_fan7!', message: '' });
-  assert.deepEqual(validateUsernameV2('@My.Name-2'), { ok: true, username: '@my.name-2', message: '' });
-  for (const bad of ['', 'ab', 'with space', 'x'.repeat(21), 'line\nbreak']) assert.equal(validateUsernameV2(bad).ok, false, bad);
+test('usernames normalize case/whitespace and enforce safe 3–20 character format', () => {
+  assert.deepEqual(validateUsernameV2('  Anime_Fan7 '), { ok: true, username: 'anime_fan7', message: '' });
+  for (const bad of ['', 'ab', '_start', 'with space', 'has-dash', 'x'.repeat(21)]) assert.equal(validateUsernameV2(bad).ok, false, bad);
 });
 
 test('profile RPC returns only own user_id and canonical username', async () => {
@@ -65,8 +64,7 @@ test('username creation always normalizes before the unique database RPC', async
   assert.deepEqual(client.calls[0], { name: 'set_list_r_profile_username_v2', args: { p_username: 'myname_2' } });
   const duplicate = mockClient(() => ({ data: null, error: { code: '23505', message: 'duplicate key' } }));
   await assert.rejects(setUsernameV2(duplicate, 'taken'), { code: '23505' });
-  assert.equal((await setUsernameV2(client, '  Cool.Name-2! ')).username, 'cool.name-2!');
-  await assert.rejects(setUsernameV2(client, 'bad name'), { code: 'invalid_username' });
+  await assert.rejects(setUsernameV2(client, 'bad-name'), { code: 'invalid_username' });
 });
 
 test('user search is username-prefix-only and requests no email or private profile fields', async () => {
@@ -238,28 +236,25 @@ test('existing anime handling is duplicate-safe and finalization failure is reco
   ]);
 });
 
-test('recommendation server handlers support ListR-only and optional AniList acceptance', async () => {
+test('only the received-recommendation acceptance handler can write AniList; normal tracker functions stay one-way', async () => {
+  const app = await readFile(new URL('../script.js', import.meta.url), 'utf8');
   const edge = await readFile(new URL('../../supabase/functions/anilist-account-v2/index.ts', import.meta.url), 'utf8');
   const helper = await readFile(new URL('../../supabase/functions/_shared/anilist-v2.mjs', import.meta.url), 'utf8');
-  const app = await readFile(new URL('../script.js', import.meta.url), 'utf8');
   const migration = await readFile(new URL('../../supabase/migrations/202610020003_friends_recommendations_v2.sql', import.meta.url), 'utf8');
-
-  assert.match(edge, /case 'send-recommendation': result = await actionSendRecommendation\(ctx\.supabase, admin, userId, body\); break/u);
-  assert.match(edge, /case 'accept-recommendation': result = await actionAcceptRecommendation\(admin, userId, body\); break/u);
-  assert.match(edge, /async function actionSendRecommendation[\\s\\S]*userClient\.rpc\('create_list_r_recommendation_v2'/u);
-  assert.match(edge, /\.select\('id,recipient_id,anilist_media_id,anime_metadata,status'\)/u);\n  assert.doesNotMatch(edge, /\.select\('id,recipient_id,anilist_media_id,metadata,status'\)/u);\n  assert.match(edge, /const mode = body\.mode === 'anilist' \? 'anilist' : 'listr'/u);
-  assert.match(edge, /if \(mode === 'listr'\)[\\s\\S]*anilistState: 'unchanged'/u);
-  assert.match(edge, /if \(mode === 'listr'\)[\\s\\S]*finalize_list_r_recommendation_v2/u);
-  assert.match(edge, /if \(mode !== 'listr'[\\s\\S]*addAniListAnimeToPlanning/u);
-  assert.match(edge, /saveRecommendationToListR[\\s\\S]*category: 'interested'/u);
-  assert.match(helper, /SaveMediaListEntry[\\s\\S]*status: 'PLANNING'/u);
-  assert.match(app, /data-recommendation-action="accept-anilist"/u);
-  assert.match(app, /acceptRecommendation\(button\.dataset\.id, 'listr'\)/u);
-  assert.match(app, /acceptRecommendation\(button\.dataset\.id, 'anilist'\)/u);
+  assert.equal((edge.match(/ensureAniListPlanning\(/gu) || []).length, 1);
+  assert.match(edge, /async function actionAcceptRecommendation[\s\S]*ensureAniListPlanning\(/u);
+  assert.match(helper, /SaveMediaListEntry[\s\S]*status: 'PLANNING'/u);
+  assert.match(edge, /category: 'interested'[\s\S]*onConflict: 'user_id,anilist_media_id', ignoreDuplicates: true/u);
+  assert.match(edge, /\.update\(\{ category: 'interested' \}\)[\s\S]*\.eq\('user_id', userId\)[\s\S]*\.eq\('anilist_media_id', mediaId\)/u);
   assert.doesNotMatch(app, /SaveMediaListEntry|UpdateMediaListEntries|DeleteMediaListEntry/u);
-  assert.match(migration, /grant execute on function public\.finalize_list_r_recommendation_v2[\\s\\S]*to service_role/u);
+  assert.match(app, /invokeAniListActionV2\(supabaseClient, 'accept-recommendation'/u);
+  assert.match(migration, /unique index if not exists list_r_profiles_v2_username_unique[\s\S]*on public\.list_r_profiles_v2 \(username\)/u);
+  assert.match(migration, /create or replace function public\.get_list_r_friend_stats_v2[\s\S]*status = 'accepted'/u);
+  assert.match(migration, /where r\.recipient_id = v_uid and r\.status = 'pending'/u);
+  assert.match(migration, /grant execute on function public\.finalize_list_r_recommendation_v2[\s\S]*to service_role/u);
+  assert.doesNotMatch(migration, /grant execute on function public\.finalize_list_r_recommendation_v2[^;]*to authenticated/u);
 });
-  
+
 test('profile dropdown closes outside and recommendation composer selects before explicit send', async () => {
   const app = await readFile(new URL('../script.js', import.meta.url), 'utf8');
   const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
@@ -270,7 +265,7 @@ test('profile dropdown closes outside and recommendation composer selects before
   assert.match(app, /document\.addEventListener\('keydown',[\s\S]*?event\.key === 'Escape'[\s\S]*?setProfileMenuOpen\(false/u);
   assert.match(html, /id="recommend-search-results" class="recommend-results"/u);
   assert.equal((html.match(/id="send-recommendation"/gu) || []).length, 1);
-  assert.match(app, /data-recommendation-search-action="select"/u);\n  assert.match(app, /const localMeta = entries\.get\(id\)\?\.meta \|\| \{\}/u);\n  assert.match(app, /const description = media\.description/u);
+  assert.match(app, /data-recommendation-search-action="select"/u);
   assert.ok(app.includes("$('#send-recommendation').addEventListener('click', () => { void sendAnimeRecommendation(); });"));
   assert.match(app, /async function sendAnimeRecommendation\(\)[\s\S]*?const media = selectedRecommendationMedia/u);
   assert.match(css, /\.recommend-dialog \.recommend-results\{[^}]*overflow-y:auto/u);
