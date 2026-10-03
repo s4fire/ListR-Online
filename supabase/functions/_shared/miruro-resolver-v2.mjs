@@ -329,32 +329,37 @@ async function fetchHtmlV2(fetcher, url, timeoutMs) {
   return response ? new TextDecoder().decode(response.bytes) : '';
 }
 
-function buildCatalogCandidateV2(item) {
+function buildCatalogCandidateV2(item, fallbackTitle = '') {
   if (!item || typeof item !== 'object') return null;
   const opaqueId = String(item.id || '');
-  if (!/^[A-Za-z0-9_-]{1,120}$/u.test(opaqueId)) return null;
+  // Miruro's Watch routes use opaque IDs. Never turn an AniList numeric ID into a route ourselves.
+  if (!/^[A-Za-z0-9_-]{1,120}$/u.test(opaqueId) || /^\d+$/u.test(opaqueId)) return null;
+
   const itemTitle = item.title && typeof item.title === 'object'
     ? String(item.title.english || item.title.romaji || item.title.native || '')
-    : '';
-  if (!itemTitle) return null;
-  const slug = slugifyTitleV2(itemTitle) || `anime-${opaqueId.toLocaleLowerCase('en')}`;
+    : String(item.title || '');
+  const routeTitle = itemTitle || String(fallbackTitle || '').trim();
+  if (!routeTitle) return null;
+
+  const slug = slugifyTitleV2(routeTitle) || `anime-${opaqueId.toLocaleLowerCase('en')}`;
   const infoUrl = safeInfoUrlV2(`/info/${opaqueId}/${slug}`);
   const watchUrl = safeWatchUrlV2(`/watch/${opaqueId}/${slug}`);
   if (!infoUrl || !watchUrl) return null;
   return {
     infoUrl,
     watchUrl,
-    names: [itemTitle],
+    names: [itemTitle || routeTitle],
   };
 }
 
-function exactCatalogCandidatesV2(payload, mediaId) {
+function exactCatalogCandidatesV2(payload, mediaId, fallbackTitle = '') {
   const expected = String(mediaId);
   const candidates = new Map();
   for (const item of payload?.data || []) {
-    const anilistIds = Array.isArray(item?.external_ids?.anilist) ? item.external_ids.anilist : [];
+    const rawAniListIds = item?.external_ids?.anilist;
+    const anilistIds = Array.isArray(rawAniListIds) ? rawAniListIds : [rawAniListIds];
     if (!anilistIds.some((id) => String(id) === expected)) continue;
-    const candidate = buildCatalogCandidateV2(item);
+    const candidate = buildCatalogCandidateV2(item, fallbackTitle);
     if (candidate) candidates.set(candidate.infoUrl, candidate);
   }
   return [...candidates.values()];
@@ -406,7 +411,7 @@ async function searchHtmlCandidatesV2(fetcher, titles) {
   const catalogCandidates = new Map();
   const titleCandidates = new Map();
   for (const payload of catalogPages) {
-    for (const candidate of exactCatalogCandidatesV2(payload, media.mediaId)) {
+    for (const candidate of exactCatalogCandidatesV2(payload, media.mediaId, media.titles[0])) {
       catalogCandidates.set(candidate.infoUrl, candidate);
     }
     for (const candidate of titleCatalogCandidatesV2(payload, media.titles)) {
