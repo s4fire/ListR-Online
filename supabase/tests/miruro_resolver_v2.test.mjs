@@ -105,6 +105,22 @@ test('a catalog title resemblance without the exact external AniList ID never re
   assert.equal(requested.some((url) => url.pathname.startsWith('/watch/')), false);
 });
 
+test('catalog title fallback can resolve when Miruro omits the AniList mapping, but info JSON-LD must still match', async () => {
+  const fetcher = async (input) => {
+    const url = new URL(input);
+    if (url.origin !== 'https://www.miruro.tv') return new Response('', { status: 404 });
+    if (url.pathname === '/api/v1/anime') return catalogResponse([catalogItem(999, 'The Sample Anime Season 2')]);
+    if (url.pathname === '/info/opaque-123/the-sample-anime-season-2') {
+      return new Response(infoHtml(42), { status: 200, headers: { 'content-type': 'text/html' } });
+    }
+    return new Response('', { status: 404 });
+  };
+
+  const match = await resolveMiruroMatchV2({ mediaId: 42, titles: ['The Sample Anime Season 2'] }, fetcher);
+  assert.equal(match?.anilistMediaId, 42);
+  assert.equal(match?.watchUrl, watchUrl);
+});
+
 test('legacy server-rendered search links remain a fallback and are still verified against exact JSON-LD', async () => {
   const requested = [];
   const fetcher = async (input) => {
