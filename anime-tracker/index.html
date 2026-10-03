@@ -104,7 +104,7 @@
             <h1 id="home-title">Your anime list.</h1>
             <p class="home-hero-subtitle">Track what you’re watching, what you finished, and what you wanna watch next.</p>
             <div class="home-hero-actions">
-              <button class="button button-primary" id="home-open-library" type="button">Open library <span aria-hidden="true">↗</span></button>
+              <button class="button button-primary" id="home-open-library" type="button">Open list <span aria-hidden="true">↗</span></button>
               <button class="button button-quiet" id="home-discover" type="button">Find anime</button>
             </div>
             <p id="home-account-note" class="home-account-note" role="status" aria-live="polite">Your guest library is saved in this browser.</p>
@@ -146,7 +146,7 @@
           <article class="home-shortcut-card home-shortcut-social">
             <span class="shortcut-symbol shortcut-symbol-social" aria-hidden="true">✧</span>
             <div><h3>Friends</h3><p id="home-social-summary">Find friends and send anime recs.</p></div>
-            <div class="home-social-actions"><button class="text-action" id="home-open-friends" type="button">Friends <span aria-hidden="true">→</span></button><button class="text-action" id="home-open-recommendations" type="button">Recommendations <span id="home-recommendation-count" class="home-mini-count" hidden></span><span aria-hidden="true">→</span></button></div>
+            <div class="home-social-actions"><button class="text-action" id="home-open-friends" type="button">Friends <span aria-hidden="true">→</span></button><button class="text-action" id="home-open-recommendations" type="button">Recs <span id="home-recommendation-count" class="home-mini-count" hidden></span><span aria-hidden="true">→</span></button></div>
           </article>
         </div>
         <section id="home-account-card" class="home-account-card" aria-label="Account status">
@@ -178,7 +178,7 @@
         <div class="toolbar">
           <label class="field-with-icon list-search"><span aria-hidden="true">⌕</span><input id="list-search" type="search" placeholder="Search your list…" aria-label="Filter your collection"></label>
           <label class="select-wrap"><span class="sr-only">Sort anime</span><select id="sort-order" aria-label="Sort anime"><option value="recent">Recently added</option><option value="alphabetical">Alphabetical</option><option value="watched">Most watched</option><option value="total">Most episodes</option></select></label>
-          <button class="button button-quiet" id="refresh-metadata" type="button" title="Refresh anime details from AniList"><span class="refresh-icon" aria-hidden="true">↻</span> Refresh details</button>
+          <button class="button button-quiet" id="refresh-metadata" type="button" title="Refresh anime details from AniList"><span class="refresh-icon" aria-hidden="true">↻</span> Refresh list</button>
         </div>
         <div id="collection-grid" class="anime-grid" aria-live="polite"></div>
         <div id="collection-empty" class="empty-state" hidden>
@@ -195,7 +195,7 @@
         </div>
         <form id="friend-search-form" class="search-panel social-search-panel">
           <label class="field-with-icon search-input"><span aria-hidden="true">⌕</span><input id="friend-query" type="search" placeholder="Search username (3+ characters)" autocomplete="off" minlength="3" maxlength="20" aria-label="Search ListR usernames" required></label>
-          <button class="button button-primary search-submit" type="submit">Find users</button>
+          <button class="button button-primary search-submit" type="submit">Search</button>
         </form>
         <p id="friends-message" class="message" role="status" aria-live="polite">Sign in and choose a username to use Friends.</p>
         <div class="social-columns">
