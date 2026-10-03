@@ -278,7 +278,7 @@ async function openMiruroNext(entry, button) {
 }
 
 function moveOptions(current) {
-  return Object.entries(CATEGORIES).filter(([key]) => key !== current).map(([key, label]) => `<option value="${key}">Move to ${label}</option>`).join('');
+  return `<option value="" selected disabled>Move from ${CATEGORIES[current]}</option>` + Object.entries(CATEGORIES).filter(([key]) => key !== current).map(([key, label]) => `<option value="${key}">Move to ${label}</option>`).join('');
 }
 
 function renderCollection() {
