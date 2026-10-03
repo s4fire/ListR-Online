@@ -399,18 +399,6 @@ async function searchHtmlCandidatesV2(fetcher, titles) {
     .slice(0, MIRURO_RESOLVER_LIMITS_V2.candidates);
 }
 
-function directAniListIdCandidatesV2(media) {
-  const candidates = new Map();
-  for (const title of media.titles) {
-    const slug = slugifyTitleV2(title);
-    if (!slug) continue;
-    const infoUrl = safeInfoUrlV2('/info/' + media.mediaId + '/' + slug);
-    const watchUrl = safeWatchUrlV2('/watch/' + media.mediaId + '/' + slug);
-    if (infoUrl && watchUrl) candidates.set(infoUrl, { infoUrl, watchUrl, names: [title] });
-  }
-  return [...candidates.values()].slice(0, MIRURO_RESOLVER_LIMITS_V2.candidates);
-}
-
   export async function resolveMiruroMatchV2(rawMedia, fetcher = fetch) {
   const media = validateRequestMediaV2(rawMedia);
   const queries = media.titles.slice(0, MIRURO_RESOLVER_LIMITS_V2.searchQueries);
@@ -431,8 +419,8 @@ function directAniListIdCandidatesV2(media) {
   let candidates = [...catalogCandidates.values()].slice(0, MIRURO_RESOLVER_LIMITS_V2.candidates);
   if (!candidates.length) candidates = [...titleCandidates.values()].slice(0, MIRURO_RESOLVER_LIMITS_V2.candidates);
 
-  // Try the current exact-ID route format before the legacy HTML-search fallback.
-  if (!candidates.length) candidates = directAniListIdCandidatesV2(media);
+  // Never fabricate a Miruro route from the AniList ID. The current site can use
+  // opaque route IDs, so every returned Watch URL must come from Miruro's own catalogue/search.
   if (!candidates.length) candidates = await searchHtmlCandidatesV2(fetcher, queries);
   if (!candidates.length) return null;
 
