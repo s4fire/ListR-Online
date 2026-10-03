@@ -108,86 +108,6 @@ async function authenticatedGraphql(accessToken, query, variables, fetchImpl) {
   return payload.data;
 }
 
-
-async function publicGraphql(query, variables, fetchImpl) {
-  const response = await safeFetch(fetchImpl, ANILIST_GRAPHQL_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify({ query, variables })
-  }, 'anilist_unavailable');
-  if (response.status === 429) {
-    throw new AniListIntegrationError('anilist_rate_limited', 'AniList is rate-limiting requests. Wait before trying again.', {
-      status: 429,
-      retryAfter: response.headers?.get?.('Retry-After')
-    });
-  }
-  const payload = await readJson(response, 'anilist_unavailable');
-  if (!response.ok || (Array.isArray(payload?.errors) && payload.errors.length)) {
-    throw new AniListIntegrationError('anilist_query_failed', 'AniList could not return the anime data. Try again later.', { status: 502 });
-  }
-  if (!payload?.data) throw new AniListIntegrationError('anilist_malformed_response', 'AniList returned incomplete anime data.', { status: 502 });
-  return payload.data;
-}
-
-const RECOMMENDATION_MEDIA_QUERY = `query ($id: Int!) {
-  Media(id: $id, type: ANIME) {
-    id
-    type
-    isAdult
-    title { romaji english native userPreferred }
-    coverImage { extraLarge large medium }
-    episodes
-    duration
-    status
-    season
-    seasonYear
-    format
-    description(asHtml: false)
-    siteUrl
-  }
-}`;
-
-export async function fetchAniListAnimeById(mediaId, fetchImpl = fetch) {
-  const id = Number(mediaId);
-  if (!Number.isSafeInteger(id) || id < 1 || id > 2147483647) {
-    throw new AniListIntegrationError('anilist_invalid_media', 'The AniList anime ID is invalid.', { status: 400 });
-  }
-  const data = await publicGraphql(RECOMMENDATION_MEDIA_QUERY, { id }, fetchImpl);
-  const media = data?.Media;
-  if (!media || Number(media.id) !== id || media.type !== 'ANIME' || media.isAdult === true) {
-    throw new AniListIntegrationError('anilist_invalid_media', 'That AniList entry is not a valid non-adult anime.', { status: 400 });
-  }
-  const title = media.title;
-  if (!title || !['romaji', 'english', 'native', 'userPreferred'].some((key) => typeof title[key] === 'string' && title[key].trim())) {
-    throw new AniListIntegrationError('anilist_invalid_media', 'AniList did not return usable anime metadata.', { status: 502 });
-  }
-  return media;
-}
-
-const SAVE_MEDIA_LIST_ENTRY_MUTATION = `mutation ($mediaId: Int!, $status: MediaListStatus!) {
-  SaveMediaListEntry(mediaId: $mediaId, status: $status) {
-    id
-    mediaId
-    status
-  }
-}`;
-
-export async function addAniListAnimeToPlanning(accessToken, mediaId, fetchImpl = fetch) {
-  const id = Number(mediaId);
-  if (!Number.isSafeInteger(id) || id < 1 || id > 2147483647) {
-    throw new AniListIntegrationError('anilist_invalid_media', 'The AniList anime ID is invalid.', { status: 400 });
-  }
-  const data = await authenticatedGraphql(accessToken, SAVE_MEDIA_LIST_ENTRY_MUTATION, {
-    mediaId: id,
-    status: 'PLANNING'
-  }, fetchImpl);
-  const entry = data?.SaveMediaListEntry;
-  if (!entry || Number(entry.mediaId) !== id || entry.status !== 'PLANNING') {
-    throw new AniListIntegrationError('recommendation_anilist_write_failed', 'AniList did not confirm the anime was added to Planning.', { status: 502 });
-  }
-  return entry;
-}
-
 export async function getAniListViewer(accessToken, fetchImpl = fetch) {
   const data = await authenticatedGraphql(accessToken, 'query { Viewer { id name } }', {}, fetchImpl);
   const viewer = data?.Viewer;
@@ -219,20 +139,10 @@ export function normalizeAniListProgress(collection) {
       if (!Number.isSafeInteger(progress) || progress < 0 || progress > 2147483647) {
         throw new AniListIntegrationError('anilist_malformed_response', 'AniList returned an invalid episode count. No ListR data was changed.', { status: 502 });
       }
-      const media = entry?.media;
-      const mediaIdFromMedia = Number(media?.id);
-      if (!media || mediaIdFromMedia !== mediaId) {
-        throw new AniListIntegrationError('anilist_malformed_response', 'AniList returned incomplete anime metadata. No ListR data was changed.', { status: 502 });
-      }
-      const episodes = media.episodes == null ? null : Number(media.episodes);
-      if (episodes != null && (!Number.isSafeInteger(episodes) || episodes < 0 || episodes > 2147483647)) {
-        throw new AniListIntegrationError('anilist_malformed_response', 'AniList returned an invalid episode total. No ListR data was changed.', { status: 502 });
-      }
-      const status = typeof media.status === 'string' ? media.status : null;
       const updatedAt = Number.isSafeInteger(Number(entry.updatedAt)) ? Number(entry.updatedAt) : 0;
       const previous = byMediaId.get(mediaId);
       if (!previous || updatedAt > previous.updatedAt || (updatedAt === previous.updatedAt && progress > previous.progress)) {
-        byMediaId.set(mediaId, { mediaId, progress, updatedAt, media });
+        byMediaId.set(mediaId, { mediaId, progress, updatedAt });
       }
     }
   }
@@ -241,31 +151,14 @@ export function normalizeAniListProgress(collection) {
   }
   return [...byMediaId.values()]
     .sort((left, right) => left.mediaId - right.mediaId)
-    .map(({ mediaId, progress, media }) => ({ mediaId, progress, media }));
+    .map(({ mediaId, progress }) => ({ mediaId, progress }));
 }
 
 const MEDIA_LIST_PROGRESS_QUERY = `query ($userId: Int!, $type: MediaType!) {
   MediaListCollection(userId: $userId, type: $type) {
     lists {
       isCustomList
-      entries {
-      mediaId
-      progress
-      updatedAt
-      media {
-        id
-        title { romaji english native userPreferred }
-        coverImage { extraLarge large medium }
-        episodes
-        duration
-        status
-        season
-        seasonYear
-        format
-        description(asHtml: false)
-        siteUrl
-      }
-    }
+      entries { mediaId progress updatedAt }
     }
   }
 }`;
@@ -283,4 +176,73 @@ export function addOneYear(from = new Date()) {
   const expires = new Date(from);
   expires.setUTCFullYear(expires.getUTCFullYear() + 1);
   return expires;
+}
+
+
+const RECOMMENDATION_MEDIA_FIELDS = `id type isAdult title { romaji english native userPreferred } coverImage { extraLarge large medium } episodes duration status season seasonYear format description(asHtml: false) siteUrl`;
+
+export async function fetchAniListAnimeById(mediaId, fetchImpl = fetch) {
+  const id = Number(mediaId);
+  if (!Number.isSafeInteger(id) || id < 1 || id > 2147483647) {
+    throw new AniListIntegrationError('invalid_recommendation_anime', 'Choose a valid anime from AniList search.', { status: 400 });
+  }
+  const response = await safeFetch(fetchImpl, ANILIST_GRAPHQL_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({
+      query: `query ($id: Int!) { Media(id: $id, type: ANIME) { ${RECOMMENDATION_MEDIA_FIELDS} } }`,
+      variables: { id },
+    }),
+  }, 'anilist_unavailable');
+  const payload = await readJson(response, 'anilist_unavailable');
+  if (!response.ok || (Array.isArray(payload?.errors) && payload.errors.length)) {
+    throw new AniListIntegrationError('anilist_anime_validation_failed', 'AniList could not validate this anime. Try another search result.', { status: 502 });
+  }
+  const media = payload?.data?.Media;
+  const title = media?.title;
+  if (!media || Number(media.id) !== id || media.type !== 'ANIME' || media.isAdult !== false
+    || !title || ![title.userPreferred, title.english, title.romaji].some((value) => typeof value === 'string' && value.trim())) {
+    throw new AniListIntegrationError('invalid_recommendation_anime', 'This AniList anime could not be verified or is unavailable for recommendation.', { status: 400 });
+  }
+  return media;
+}
+
+// ListR acceptance is deliberately callable only by the server handler that has authenticated
+// the recipient and loaded their pending recommendation. It saves via the recipient's RLS-scoped
+// client, then finalizes the inbox through the server-only RPC. It never calls AniList.
+export async function completeRecommendationAcceptanceV2({ mediaId, existingCategory = null, persistInterested, finalizeRecommendation }) {
+  const id = Number(mediaId);
+  if (!Number.isSafeInteger(id) || id < 1 || id > 2147483647
+    || typeof persistInterested !== 'function'
+    || typeof finalizeRecommendation !== 'function') {
+    throw new AniListIntegrationError('invalid_recommendation_acceptance', 'The recommendation acceptance request is invalid.', { status: 400 });
+  }
+
+  const saved = await persistInterested();
+  if (!saved || saved.ok !== true) {
+    throw Object.assign(new Error('Could not save this anime to your ListR Interested list. The recommendation remains pending.'), {
+      status: 503,
+      code: 'list_r_save_failed',
+    });
+  }
+
+  let finalized;
+  try {
+    finalized = await finalizeRecommendation();
+  } catch {
+    finalized = null;
+  }
+  if (finalized !== 'accepted') {
+    throw Object.assign(new Error('The anime is saved in ListR Interested, but ListR could not finish the recommendation record. Retry this recommendation; it will not create duplicate anime.'), {
+      status: 503,
+      code: 'recommendation_finalize_failed',
+    });
+  }
+
+  return {
+    state: 'accepted',
+    mediaId: id,
+    alreadyInListR: Boolean(saved.alreadyInListR),
+    existingCategory: saved.existingCategory || existingCategory || null,
+  };
 }

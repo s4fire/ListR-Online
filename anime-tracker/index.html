@@ -3,10 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#101116">
+  <meta name="theme-color" content="#06111d">
   <meta name="referrer" content="no-referrer">
   <meta name="description" content="ListR brings your anime library, episode progress, discovery, and friends together.">
   <title>ListR — Anime Tracker</title>
+  <link rel="icon" type="image/svg+xml" href="./favicon_v2.svg">
   <link rel="preconnect" href="https://graphql.anilist.co">
   <link rel="preconnect" href="https://s4.anilist.co">
   <link rel="preconnect" href="https://cdn.jsdelivr.net">
@@ -25,15 +26,16 @@
         <span>ListR<span class="brand-dot">.</span></span>
       </a>
       <nav class="primary-nav" aria-label="Main navigation">
-        <button class="nav-link" type="button" data-view="home">Home</button>
-        <button class="nav-link is-active" type="button" data-view="watching">Watching <span class="nav-count" id="nav-watching">0</span></button>
-        <button class="nav-link" type="button" data-view="completed">Completed <span class="nav-count" id="nav-completed">0</span></button>
-        <button class="nav-link" type="button" data-view="interested">Interested <span class="nav-count" id="nav-interested">0</span></button>
+        <button class="nav-link" type="button" data-view="home"><span class="nav-icon" aria-hidden="true">⌂</span><span class="nav-link-label">Home</span></button>
+        <button class="nav-link is-active" type="button" data-view="watching"><span class="nav-icon" aria-hidden="true">◷</span><span class="nav-link-label">Watching</span><span class="nav-count" id="nav-watching">0</span></button>
+        <button class="nav-link" type="button" data-view="completed"><span class="nav-icon" aria-hidden="true">✓</span><span class="nav-link-label">Completed</span><span class="nav-count" id="nav-completed">0</span></button>
+        <button class="nav-link" type="button" data-view="interested"><span class="nav-icon" aria-hidden="true">☆</span><span class="nav-link-label">Interested</span><span class="nav-count" id="nav-interested">0</span></button>
       </nav>
       <button class="button button-primary top-add" id="open-search" type="button"><span aria-hidden="true">＋</span> Add anime</button>
       <div class="profile-menu-wrap" id="profile-menu">
         <button class="profile-toggle" id="profile-menu-toggle" type="button" aria-label="Open profile menu" aria-expanded="false" aria-controls="profile-dropdown" title="Profile menu">
           <svg class="profile-toggle-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"></circle><path d="M4.5 20a7.5 7.5 0 0 1 15 0"></path></svg>
+          <span class="profile-toggle-label">Profile &amp; social</span>
           <svg class="profile-toggle-chevron" viewBox="0 0 12 8" aria-hidden="true"><path d="m1 1 5 5 5-5"></path></svg>
         </button>
         <div class="profile-dropdown" id="profile-dropdown" hidden>
@@ -46,6 +48,9 @@
             <button class="profile-dropdown-link" type="button" data-view="friends">Friends</button>
             <button class="profile-dropdown-link" type="button" data-view="recommendations">Recommendations <span class="nav-count" id="nav-recommendations" hidden></span></button>
           </div>
+          <button class="sound-toggle" id="sound-toggle" type="button" aria-pressed="true" aria-label="Interface sounds on">
+            <span class="sound-toggle-icon" aria-hidden="true">♪</span><span>Interface sounds</span><span id="sound-toggle-state" class="sound-toggle-state">On</span><span class="sound-toggle-track" aria-hidden="true"><span class="sound-toggle-thumb"></span></span>
+          </button>
         </div>
       </div>
     </header>
@@ -119,6 +124,7 @@
           <article class="home-stat-card"><span class="home-stat-icon icon-purple" aria-hidden="true">◉</span><span class="home-stat-label">WATCHING</span><strong id="home-stat-watching">0</strong><small>currently in progress</small></article>
           <article class="home-stat-card"><span class="home-stat-icon icon-pink" aria-hidden="true">✦</span><span class="home-stat-label">COMPLETED</span><strong id="home-stat-completed">0</strong><small>stories seen through</small></article>
           <article class="home-stat-card"><span class="home-stat-icon icon-blue" aria-hidden="true">☆</span><span class="home-stat-label">EPISODES WATCHED</span><strong id="home-stat-episodes">0</strong><small>one at a time</small></article>
+          <article class="home-stat-card home-stat-time"><span class="home-stat-icon" aria-hidden="true">◴</span><span class="home-stat-label">WATCH TIME</span><strong id="home-stat-hours">0.0</strong><small>estimated hours</small></article>
         </div>
 
         <div class="home-section-heading home-shortcut-heading">

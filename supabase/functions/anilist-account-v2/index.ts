@@ -3,18 +3,20 @@ import {
   AniListIntegrationError,
   addOneYear,
   buildAniListAuthorizationUrl,
+  completeRecommendationAcceptanceV2,
   constantTimeEqual,
   createOAuthState,
   exchangeAniListCode,
-  fetchAniListMediaProgress,
   fetchAniListAnimeById,
-  addAniListAnimeToPlanning,
+  fetchAniListMediaProgress,
   getAniListViewer,
   hashOAuthState,
 } from '../_shared/anilist-v2.mjs'
 
 const CONNECTIONS = 'anilist_connections_v2'
 const OAUTH_STATES = 'anilist_oauth_states_v2'
+const RECOMMENDATIONS = 'list_r_recommendations_v2'
+const ANIME_RECORDS = 'anime_records'
 const ALLOWED_ORIGINS = new Set([
   'https://s4fire.github.io',
   'http://localhost:8000',
@@ -98,8 +100,6 @@ async function getAuthenticatedUser(ctx: any) {
   if (error || !data?.user?.id) throw Object.assign(new Error('Sign in to ListR before connecting AniList.'), { status: 401, code: 'unauthorized' })
   return data.user
 }
-
-
 
 async function actionStatus(admin: any, userId: string) {
   const { data, error } = await admin
@@ -283,244 +283,123 @@ async function actionCompleteSync(admin: any, userId: string) {
   return { state: 'connected', lastSyncedAt }
 }
 
-async function actionSendRecommendation(userClient: any, admin: any, userId: string, body: Record<string, unknown>) {
-  const recipientId = requireString(body.recipientId, 'recipient ID', 36, 36)
-  const mediaId = Number(body.mediaId)
-  if (!/^([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/iu.test(recipientId)
-    || !Number.isSafeInteger(mediaId) || mediaId < 1 || mediaId > 2147483647) {
-    throw Object.assign(new Error('A valid friend and AniList anime are required.'), { status: 400, code: 'invalid_request' })
+function requireUuid(value: unknown, name: string) {
+  const text = requireString(value, name, 36, 36)
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(text)) {
+    throw Object.assign(new Error(`The ${name} value is invalid.`), { status: 400, code: 'invalid_request' })
   }
-
-  // Re-fetch canonical metadata server-side so clients cannot forge recommendation data.
-  const media = await fetchAniListAnimeById(mediaId)
-  const metadata = {
-    id: Number(media.id),
-    type: 'ANIME',
-    isAdult: Boolean(media.isAdult),
-    title: media.title,
-    coverImage: media.coverImage,
-    episodes: media.episodes,
-    duration: media.duration,
-    status: media.status,
-    season: media.season,
-    seasonYear: media.seasonYear,
-    format: media.format,
-    description: media.description,
-    siteUrl: media.siteUrl,
-  }
-
-  const { data, error } = await userClient.rpc('create_list_r_recommendation_v2', {
-    p_recipient_id: recipientId,
-    p_media_id: mediaId,
-    p_metadata: metadata,
-  })
-  if (error) {
-    const status = error.code === '42501' ? 403 : error.code === '23505' ? 409 : 400
-    throw Object.assign(new Error(error.message || 'Could not send recommendation.'), {
-      status,
-      code: error.code || 'recommendation_create_failed',
-    })
-  }
-
-  const row = Array.isArray(data) ? data[0] : data
-  if (!row?.recommendation_id) {
-    throw Object.assign(new Error('ListR did not confirm the recommendation was saved.'), {
-      status: 503,
-      code: 'recommendation_create_failed',
-    })
-  }
-
-  return {
-    state: 'sent',
-    recommendationId: row.recommendation_id,
-    createdAt: row.created_at,
-  }
+  return text
 }
 
-async function saveRecommendationToListR(admin: any, userId: string, media: any) {
-  const mediaId = Number(media.id)
-  const metadata = {
-    id: mediaId,
-    type: 'ANIME',
-    isAdult: Boolean(media.isAdult),
-    title: media.title,
-    coverImage: media.coverImage,
-    episodes: media.episodes,
-    duration: media.duration,
-    status: media.status,
-    season: media.season,
-    seasonYear: media.seasonYear,
-    format: media.format,
-    description: media.description,
-    siteUrl: media.siteUrl,
+async function actionSendRecommendation(ctx: any, body: Record<string, unknown>) {
+  const recipientId = requireUuid(body.recipientId, 'recipient')
+  const mediaId = Number(body.mediaId)
+  if (!Number.isSafeInteger(mediaId) || mediaId < 1 || mediaId > 2147483647) {
+    throw Object.assign(new Error('Choose a valid AniList anime.'), { status: 400, code: 'invalid_recommendation_anime' })
+  }
+  // Never trust browser-supplied metadata; fetch the canonical non-adult anime by ID.
+  const media = await fetchAniListAnimeById(mediaId)
+  const { data, error } = await ctx.supabase.rpc('create_list_r_recommendation_v2', {
+    p_recipient_id: recipientId,
+    p_media_id: mediaId,
+    p_metadata: media,
+  })
+  if (error) {
+    const duplicate = error.code === '23505'
+    const forbidden = error.code === '42501'
+    throw Object.assign(new Error(duplicate
+      ? 'This anime is already pending as a recommendation to this friend.'
+      : forbidden
+        ? 'Recommendations can only be sent to an accepted friend.'
+        : 'Could not save this recommendation. Try again.'), {
+      status: duplicate ? 409 : (forbidden ? 403 : 503),
+      code: duplicate ? 'duplicate_recommendation' : (forbidden ? 'friendship_required' : 'recommendation_send_failed'),
+    })
+  }
+  if (!Array.isArray(data) || !data[0]?.recommendation_id) {
+    throw Object.assign(new Error('ListR did not confirm that the recommendation was saved.'), { status: 503, code: 'recommendation_save_failed' })
+  }
+  return { state: 'sent', recommendationId: data[0].recommendation_id, mediaId, title: media.title }
+}
+
+async function actionAcceptRecommendation(ctx: any, admin: any, userId: string, body: Record<string, unknown>) {
+  const recommendationId = requireUuid(body.recommendationId, 'recommendation')
+  const { data: recommendation, error: recommendationError } = await admin
+    .from(RECOMMENDATIONS)
+    .select('id,sender_id,recipient_id,anilist_media_id,anime_metadata,status')
+    .eq('id', recommendationId)
+    .eq('recipient_id', userId)
+    .maybeSingle()
+  if (recommendationError) throw Object.assign(new Error('Could not load this recommendation.'), { status: 503, code: 'recommendation_load_failed' })
+  if (!recommendation || !['pending', 'accepted'].includes(recommendation.status)) {
+    throw Object.assign(new Error('This recommendation is no longer available.'), { status: 404, code: 'recommendation_unavailable' })
+  }
+  const mediaId = Number(recommendation.anilist_media_id)
+  const metadata = recommendation.anime_metadata
+  if (!Number.isSafeInteger(mediaId) || Number(metadata?.id) !== mediaId || metadata?.type !== 'ANIME') {
+    throw Object.assign(new Error('This recommendation has invalid anime data and cannot be accepted.'), { status: 409, code: 'invalid_recommendation_anime' })
   }
 
-  const { data: existing, error: existingError } = await admin
-    .from('anime_records')
-    .select('category,watched_episodes,anime_metadata')
+  const { data: existingEntry, error: existingError } = await ctx.supabase
+    .from(ANIME_RECORDS)
+    .select('category')
     .eq('user_id', userId)
     .eq('anilist_media_id', mediaId)
     .maybeSingle()
-  if (existingError) {
-    throw Object.assign(new Error('Could not check the existing ListR entry.'), {
-      status: 503,
-      code: 'list_r_save_failed',
-    })
-  }
+  if (existingError) throw Object.assign(new Error('Could not check your ListR library.'), { status: 503, code: 'list_r_check_failed' })
 
-  if (existing) {
-    if (existing.category !== 'interested') {
-      const { error } = await admin
-        .from('anime_records')
-        .update({ category: 'interested', updated_at: new Date().toISOString() })
-        .eq('user_id', userId)
-        .eq('anilist_media_id', mediaId)
-      if (error) {
-        throw Object.assign(new Error('Could not move the anime to ListR Interested.'), {
-          status: 503,
-          code: 'list_r_save_failed',
-        })
-      }
-    }
-    return {
-      alreadyInListR: true,
-      existingCategory: existing.category,
-    }
-  }
-
-  const { error } = await admin
-    .from('anime_records')
-    .insert({
-      user_id: userId,
-      anilist_media_id: mediaId,
-      category: 'interested',
-      watched_episodes: 0,
-      anime_metadata: metadata,
-    })
-  if (error) {
-    // A concurrent insert may have won the race. Re-read and move that entry instead
-    // of creating a duplicate or losing the acceptance operation.
-    if (error.code === '23505') {
-      const { data: raced, error: raceReadError } = await admin
-        .from('anime_records')
-        .select('category')
-        .eq('user_id', userId)
-        .eq('anilist_media_id', mediaId)
-        .maybeSingle()
-      if (!raceReadError && raced) {
-        if (raced.category !== 'interested') {
-          const { error: raceUpdateError } = await admin
-            .from('anime_records')
-            .update({ category: 'interested', updated_at: new Date().toISOString() })
-            .eq('user_id', userId)
-            .eq('anilist_media_id', mediaId)
-          if (raceUpdateError) {
-            throw Object.assign(new Error('Could not move the anime to ListR Interested.'), {
-              status: 503,
-              code: 'list_r_save_failed',
-            })
-          }
+  return await completeRecommendationAcceptanceV2({
+    mediaId,
+    existingCategory: existingEntry?.category || null,
+    persistInterested: async () => {
+      // Existing anime is moved to Interested while preserving its watched count and
+      // cached metadata. Missing entries use the owner/media compound key to avoid duplicates.
+      if (existingEntry?.category && existingEntry.category !== 'interested') {
+        const { data: moved, error: moveError } = await ctx.supabase.from(ANIME_RECORDS)
+          .update({ category: 'interested' })
+          .eq('user_id', userId)
+          .eq('anilist_media_id', mediaId)
+          .select('id')
+          .maybeSingle()
+        if (moveError) return { ok: false }
+        if (!moved) {
+          const { error: insertError } = await ctx.supabase.from(ANIME_RECORDS).upsert({
+            user_id: userId, anilist_media_id: mediaId, category: 'interested',
+            watched_episodes: 0, anime_metadata: metadata,
+          }, { onConflict: 'user_id,anilist_media_id', ignoreDuplicates: true })
+          if (insertError) return { ok: false }
         }
-        return { alreadyInListR: true, existingCategory: raced.category }
+      } else if (!existingEntry) {
+        const { error: insertError } = await ctx.supabase.from(ANIME_RECORDS).upsert({
+          user_id: userId, anilist_media_id: mediaId, category: 'interested',
+          watched_episodes: 0, anime_metadata: metadata,
+        }, { onConflict: 'user_id,anilist_media_id', ignoreDuplicates: true })
+        if (insertError) return { ok: false }
       }
-    }
-    throw Object.assign(new Error('Could not save the anime to ListR Interested.'), {
-      status: 503,
-      code: 'list_r_save_failed',
-    })
-  }
-
-  return {
-    alreadyInListR: false,
-    existingCategory: null,
-  }
-}
-
-async function actionAcceptRecommendation(admin: any, userId: string, body: Record<string, unknown>) {
-  const recommendationId = requireString(body.recommendationId, 'recommendation ID', 36, 36)
-  const mode = body.mode === 'anilist' ? 'anilist' : 'listr'
-  if (!/^([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/iu.test(recommendationId)) {
-    throw Object.assign(new Error('A valid recommendation is required.'), { status: 400, code: 'invalid_request' })
-  }
-
-  const { data: recommendation, error: recommendationError } = await admin
-    .from('list_r_recommendations_v2')
-    .select('id,recipient_id,anilist_media_id,anime_metadata,status')
-    .eq('id', recommendationId)
-    .eq('recipient_id', userId)
-    .eq('status', 'pending')
-    .maybeSingle()
-  if (recommendationError) throw Object.assign(new Error('Could not load this recommendation.'), { status: 503, code: 'recommendation_load_failed' })
-  if (!recommendation) throw Object.assign(new Error('This recommendation is unavailable.'), { status: 404, code: 'recommendation_unavailable' })
-
-  // ListR-only acceptance must not depend on AniList being connected or reachable.
-  // The recommendation was server-validated when it was sent, so use the stored
-  // canonical metadata instead of making another AniList request here.
-  const storedMetadata = recommendation.metadata
-  const media = {
-    id: Number(recommendation.anilist_media_id),
-    type: 'ANIME',
-    isAdult: Boolean(storedMetadata?.isAdult),
-    title: storedMetadata?.title,
-    coverImage: storedMetadata?.coverImage ?? null,
-    episodes: storedMetadata?.episodes ?? null,
-    duration: storedMetadata?.duration ?? null,
-    status: storedMetadata?.status ?? null,
-    season: storedMetadata?.season ?? null,
-    seasonYear: storedMetadata?.seasonYear ?? null,
-    format: storedMetadata?.format ?? null,
-    description: storedMetadata?.description ?? null,
-    siteUrl: storedMetadata?.siteUrl ?? null,
-  }
-  const listRResult = await saveRecommendationToListR(admin, userId, media)
-
-  if (mode === 'listr') {
-    const { data: finalizedStatus, error: finalizeError } = await admin.rpc(
-      'finalize_list_r_recommendation_v2',
-      { p_recommendation_id: recommendationId, p_recipient_id: userId },
-    )
-    if (finalizeError || finalizedStatus !== 'accepted') {
-      throw Object.assign(new Error('ListR saved the anime, but could not finalize the recommendation. It remains retryable.'), {
-        status: 503, code: 'recommendation_finalize_failed',
+      // A row may have been inserted in another tab after the initial existence check.
+      // Always apply and verify Interested immediately before finalizing the recommendation.
+      const { data: confirmedEntry, error: confirmError } = await ctx.supabase.from(ANIME_RECORDS)
+        .update({ category: 'interested' })
+        .eq('user_id', userId)
+        .eq('anilist_media_id', mediaId)
+        .select('category')
+        .maybeSingle()
+      if (confirmError || confirmedEntry?.category !== 'interested') return { ok: false }
+      return {
+        ok: true,
+        alreadyInListR: Boolean(existingEntry),
+        existingCategory: existingEntry?.category || null,
+      }
+    },
+    finalizeRecommendation: async () => {
+      const { data: finalized, error: finalizeError } = await admin.rpc('finalize_list_r_recommendation_v2', {
+        p_recommendation_id: recommendationId,
+        p_recipient_id: userId,
       })
-    }
-    return {
-      state: 'accepted',
-      recommendationId,
-      anilistState: 'unchanged',
-      alreadyInListR: listRResult.alreadyInListR,
-      existingCategory: listRResult.existingCategory,
-    }
-  }
-
-  const { data: connection, error: connectionError } = await admin
-    .from(CONNECTIONS)
-    .select('access_token,token_expires_at')
-    .eq('user_id', userId)
-    .maybeSingle()
-  if (connectionError) throw Object.assign(new Error('Could not load the AniList connection.'), { status: 503, code: 'connection_status_unavailable' })
-  if (!connection) throw Object.assign(new Error('Connect your AniList account before adding this recommendation to AniList.'), { status: 409, code: 'anilist_not_connected' })
-  if (Date.parse(connection.token_expires_at) <= Date.now()) throw Object.assign(new Error('Your AniList authorization has expired. Reconnect AniList to continue.'), { status: 409, code: 'anilist_reauthorization_required' })
-
-  await addAniListAnimeToPlanning(connection.access_token, Number(recommendation.anilist_media_id))
-
-  const { data: finalizedStatus, error: finalizeError } = await admin.rpc(
-    'finalize_list_r_recommendation_v2',
-    { p_recommendation_id: recommendationId, p_recipient_id: userId },
-  )
-  if (finalizeError || finalizedStatus !== 'accepted') {
-    throw Object.assign(new Error('AniList confirmed the change, but ListR could not finalize the recommendation. It remains retryable.'), {
-      status: 503, code: 'recommendation_finalize_failed',
-    })
-  }
-
-  return {
-    state: 'accepted',
-    recommendationId,
-    anilistState: 'planning',
-    alreadyInListR: listRResult.alreadyInListR,
-    existingCategory: listRResult.existingCategory,
-  }
+      if (finalizeError) throw finalizeError
+      return finalized
+    },
+  })
 }
 
 export default {
@@ -545,8 +424,8 @@ export default {
         case 'disconnect': result = await actionDisconnect(admin, userId); break
         case 'sync': result = await actionSync(admin, userId); break
         case 'sync-complete': result = await actionCompleteSync(admin, userId); break
-        case 'send-recommendation': result = await actionSendRecommendation(ctx.supabase, admin, userId, body); break
-        case 'accept-recommendation': result = await actionAcceptRecommendation(admin, userId, body); break
+        case 'send-recommendation': result = await actionSendRecommendation(ctx, body); break
+        case 'accept-recommendation': result = await actionAcceptRecommendation(ctx, admin, userId, body); break
         default: return json({ error: 'unknown_action', message: 'Unknown AniList action.' }, 400)
       }
       return json(result)

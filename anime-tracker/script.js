@@ -5,6 +5,7 @@ import { enqueueCloudOperation, loadUserEntries, mergePendingOperations, readClo
 import { validateAuthFields } from './auth-validation.js';
 import { canUseAniListV2, clearAniListOAuthAttemptV2, invokeAniListActionV2, isPotentialAniListOAuthReturnV2, readAniListCallbackV2, readAniListOAuthAttemptV2, removeAniListCallbackParamsV2, safeAniListErrorMessageV2, shouldAutoSyncAniListV2, storeAniListOAuthAttemptV2, validateProgressResponseV2 } from './anilist-integration-v2.js';
 import { dismissRecommendationV2, getFriendStatsV2, getMyProfileV2, listFriendsV2, listReceivedRecommendationsV2, normalizeUsernameV2, respondFriendRequestV2, searchListRUsersV2, sendFriendRequestV2, setUsernameV2, socialErrorMessageV2, unfriendV2 } from './social-v2.js';
+import { initializeUIEffectsV2 } from './ui-effects-v2.js';
 
 // ----------------------------- App state -----------------------------------
 const STORE_KEY = 'afterglow-anime-tracker-v1';
@@ -273,6 +274,7 @@ function renderHome() {
   $('#home-stat-watching').textContent = String(stats.counts.watching);
   $('#home-stat-completed').textContent = String(stats.counts.completed);
   $('#home-stat-episodes').textContent = stats.episodes.toLocaleString();
+  $('#home-stat-hours').textContent = formatHours(stats.minutes);
   $('#home-account-note').textContent = signedIn
     ? 'Your private library is loaded for this account.'
     : 'Your guest library is saved in this browser.';
@@ -1564,32 +1566,15 @@ async function acceptRecommendation(recommendationId) {
   const recommendation = receivedRecommendations.find((item) => String(item.recommendation_id) === String(recommendationId));
   if (!recommendation) return;
   const uid = currentUser.id;
-  try {
-    const status = await invokeAniListActionV2(supabaseClient, 'status');
-    if (currentUser?.id !== uid) return;
-    if (status.state !== 'connected') {
-      updateAniListState(status.state === 'error' ? 'error' : 'not_connected', {
-        message: status.message || 'Connect AniList before accepting a recommendation to Planning.',
-        messageType: 'error',
-      });
-      setRecommendationsMessage('Connect AniList first. Add to Interested will also add the anime to AniList Planning.', 'error');
-      if (window.confirm('Connect or reconnect AniList now? The recommendation will remain here until both ListR and AniList have confirmed acceptance.')) await connectAniList();
-      return;
-    }
-  } catch (error) {
-    setRecommendationsMessage(safeAniListErrorMessageV2(error), 'error');
-    return;
-  }
-
   socialBusy = true;
   const card = $(`[data-recommendation-id="${CSS.escape(String(recommendationId))}"]`);
   const button = card?.querySelector('[data-recommendation-action="accept"]');
-  if (button) { button.disabled = true; button.textContent = 'Adding…'; }
-  setRecommendationsMessage('Saving the anime to ListR and then confirming its AniList Planning status…');
+  if (button) { button.disabled = true; button.textContent = 'Adding to ListR…'; }
+  setRecommendationsMessage('Adding this anime to your ListR Interested list…');
   try {
     const result = await invokeAniListActionV2(supabaseClient, 'accept-recommendation', { recommendationId: String(recommendationId) });
     if (currentUser?.id !== uid) return;
-    if (!result || result.state !== 'accepted') throw new Error('AniList and ListR did not both confirm this recommendation. It remains available to retry.');
+    if (!result || result.state !== 'accepted') throw new Error('ListR did not confirm the recommendation. It remains available to retry.');
     if (!result.alreadyInListR || entries.has(String(recommendation.anilist_media_id))) applyRecommendationLocally(recommendation, 'interested');
     else {
       try {
@@ -1610,15 +1595,14 @@ async function acceptRecommendation(recommendationId) {
       : result.alreadyInListR
         ? ' It was already in ListR Interested, so no duplicate was created.'
       : ' It is now in your ListR Interested list.';
-    const planningNote = result.anilistState === 'already_planning' ? ' It was already in AniList Planning.' : ' It was added to AniList Planning.';
-    setRecommendationsMessage(`Recommendation accepted.${existingNote}${planningNote}`);
-    showToast('Recommendation accepted. ListR and AniList confirmed the update.');
+    setRecommendationsMessage(`Recommendation accepted.${existingNote} AniList was not changed.`);
+    showToast('Recommendation accepted. Added to ListR Interested only.', 'success');
   } catch (error) {
     if (currentUser?.id !== uid) return;
-    if (['recommendation_anilist_write_failed', 'recommendation_finalize_failed'].includes(error?.code)) {
+    if (error?.code === 'recommendation_finalize_failed') {
       applyRecommendationLocally(recommendation, 'interested');
     }
-    setRecommendationsMessage(safeAniListErrorMessageV2(error), 'error');
+    setRecommendationsMessage(safeRecommendationErrorMessage(error), 'error');
   } finally {
     socialBusy = false;
     if (currentUser?.id === uid) renderRecommendations();
@@ -1911,4 +1895,5 @@ else if (CATEGORIES[initialHash]) activeView = initialHash;
 const authCallbackInUrl = /(?:access_token|code|error|error_description)=/.test(`${window.location.search}&${window.location.hash}`);
 setView(activeView, { updateHash: !authCallbackInUrl });
 render();
+initializeUIEffectsV2();
 void initializeAccount();
