@@ -121,6 +121,22 @@ test('catalog title fallback can resolve when Miruro omits the AniList mapping, 
   assert.equal(match?.watchUrl, watchUrl);
 });
 
+test('exact AniList catalog match returns Miruro opaque Watch URL without requiring AniList JSON-LD on the info page', async () => {
+  const requested = [];
+  const fetcher = async (input) => {
+    const url = new URL(input);
+    requested.push(url);
+    if (url.origin !== 'https://www.miruro.tv') return new Response('', { status: 404 });
+    if (url.pathname === '/api/v1/anime') return catalogResponse([catalogItem(42)]);
+    throw new Error('The resolver should not need to fetch the info page after an exact catalog match.');
+  };
+
+  const match = await resolveMiruroMatchV2({ mediaId: 42, titles: ['The Sample Anime Season 2'] }, fetcher);
+  assert.equal(match?.anilistMediaId, 42);
+  assert.equal(match?.watchUrl, watchUrl);
+  assert.equal(requested.every((url) => url.pathname === '/api/v1/anime'), true);
+});
+
 test('an actual Miruro opaque watch route is preserved with episode query parameters', async () => {
   const opaqueWatchUrl = 'https://www.miruro.tv/watch/YHwdMp1LKUDN0FUzpQG338Gu1STKfW4w/kaiju-no-8';
   assert.equal(extractMiruroAniListMatchV2(infoHtml(42), 42, opaqueWatchUrl)?.watchUrl, opaqueWatchUrl);
