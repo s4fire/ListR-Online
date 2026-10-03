@@ -1,6 +1,14 @@
 export const MIRURO_RESOLVER_FUNCTION_V2 = 'miruro-resolve-v2';
 export const MIRURO_CACHE_PREFIX_V2 = 'listr-miruro-watch-v2:';
 export const MIRURO_CACHE_TTL_MS_V2 = 6 * 60 * 60 * 1000;
+const MIRURO_CATALOG_XOR_KEY_V2 = new TextEncoder().encode('miruro/catalog');
+
+function normalizeTitleV2(value) {
+  return String(value || '').normalize('NFKC').toLocaleLowerCase('en')
+    .replace(/[’‘]/gu, "'")
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim().replace(/\s+/gu, ' ');
+}
 
 function safeMediaId(value) {
   const id = Number(value);
@@ -86,7 +94,7 @@ async function readBrowserCatalogV2(response, maxBytes = 1_200_000) {
   if (contentType.split(';', 1)[0].trim().toLowerCase() === 'application/octet-stream') {
     try {
       for (let index = 0; index < bytes.length; index += 1) {
-        bytes[index] ^= new TextEncoder().encode('miruro/catalog')[index % 14];
+        bytes[index] ^= MIRURO_CATALOG_XOR_KEY_V2[index % MIRURO_CATALOG_XOR_KEY_V2.length];
       }
       const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
       const reader2 = stream.getReader();
@@ -144,7 +152,6 @@ function scoreCatalogItemV2(item, requestedTitles) {
 
 async function resolveMiruroInBrowserV2(entry) {
   const media = buildMiruroPayloadV2(entry);
-  const key = new TextEncoder().encode('miruro/catalog');
   const queries = media.titles.slice(0, 4);
 
   for (const title of queries) {
