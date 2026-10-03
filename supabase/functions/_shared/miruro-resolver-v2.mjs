@@ -164,25 +164,31 @@ export function extractMiruroCandidatesV2(html) {
 export function extractMiruroAniListMatchV2(html, expectedMediaId, candidateWatchUrl = '') {
   const expectedId = Number(expectedMediaId);
   if (!Number.isSafeInteger(expectedId) || expectedId < 1) return null;
+  const source = String(html || '');
+
   let exactEntity = null;
-  for (const block of readJsonLdBlocksV2(html)) {
+  for (const block of readJsonLdBlocksV2(source)) {
     visitJsonLdV2(block, (node) => {
       const sameAs = Array.isArray(node.sameAs) ? node.sameAs : [node.sameAs];
       const hasExactId = sameAs.some((value) => {
-        const match = String(value || '').match(/(?:https?:)?\/\/(?:www\.)?anilist\.co\/anime\/(\d+)(?:[/?#]|$)/iu);
+        const match = String(value || '').match(/(?:https?:)?\/\/(?:www\.)?anilist\.co\/anime\/(\d+)(?:[\/?#]|$)/iu);
         return match && Number(match[1]) === expectedId;
       });
       if (!hasExactId) return;
       exactEntity = node;
     });
   }
-  if (!exactEntity) return null;
 
-  const candidates = collectUrlsV2([
-    exactEntity.url,
-    exactEntity.mainEntityOfPage,
-    exactEntity.potentialAction,
-  ]);
+  const exactIdPattern = new RegExp(
+    '(?:https?:)?\\/\\/(?:www\\.)?anilist\\.co\\/anime\\/' + expectedId + '(?:[\\/?#\"\'&]|$)',
+    'iu',
+  );
+  const hasExactHtmlId = exactIdPattern.test(source);
+  if (!exactEntity && !hasExactHtmlId) return null;
+
+  const candidates = collectUrlsV2(exactEntity
+    ? [exactEntity.url, exactEntity.mainEntityOfPage, exactEntity.potentialAction]
+    : []);
   let canonical = null;
   for (const value of candidates) {
     const checked = safeWatchUrlV2(value);
@@ -190,15 +196,16 @@ export function extractMiruroAniListMatchV2(html, expectedMediaId, candidateWatc
   }
   canonical ||= safeWatchUrlV2(candidateWatchUrl);
   if (!canonical) return null;
-  const count = Number(exactEntity.numberOfEpisodes);
+
+  const count = Number(exactEntity?.numberOfEpisodes);
+  const name = String(exactEntity?.name || '');
   return {
     anilistMediaId: expectedId,
     watchUrl: canonical,
-    title: String(exactEntity.name || ''),
+    title: name,
     episodes: Number.isSafeInteger(count) && count > 0 ? count : null,
   };
 }
-
 function titleScoreV2(candidateNames, requestedTitles) {
   let best = 0;
   for (const name of candidateNames) {
