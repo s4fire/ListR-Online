@@ -15,6 +15,18 @@ The frontend is configured for the Supabase project in `anime-tracker/supabase-c
 
 The UI shows a setup error rather than mixing guest data if the cloud table is missing or access is denied. Guest mode remains available while the backend is being configured.
 
+## Appearance and Miruro Watch v2
+
+Appearance settings provide five colour themes (Sub-Zero, Onyx, Cosmic, Emerald, Soft Light) and three independent page layouts (Current, Reworked Old, New). Guest preferences stay in this browser; signed-in preferences are user-ID scoped and synced through RLS. Apply `supabase/migrations/202610030002_appearance_preferences_v2.sql` to enable cloud preference sync.
+
+Watching cards can open their exact AniList-matched series on Miruro at the next episode (`watched + 1`; episode 1 when progress is zero). This uses the public, bounded `miruro-resolve-v2` Supabase Edge Function. The function searches official Miruro title pages, accepts only an info page whose JSON-LD `sameAs` has the exact AniList media ID, and returns only a validated Miruro Watch URL; it does not access or play streams. Deploy it with guest-compatible invocation enabled:
+
+```bash
+supabase functions deploy miruro-resolve-v2 --no-verify-jwt
+```
+
+If the function is not deployed or no exact ID match is available, ListR reports that the link could not be resolved and does not open a guessed result. Read [`APPEARANCE_MIRURO_v2.md`](APPEARANCE_MIRURO_v2.md) and [`MIRURO_ROUTING_RESEARCH_v2.md`](MIRURO_ROUTING_RESEARCH_v2.md) for behavior, limits, and route evidence.
+
 ## AniList account and progress sync v2
 
 The optional AniList connection supplements ListR sign-in; it does not replace it. OAuth code exchange and AniList access tokens stay server-side in Supabase. Applying AniList progress uses an authenticated `SECURITY INVOKER` RPC and existing owner-only RLS; it changes watched counts only on matching rows, without creating duplicates or overwriting metadata/categories. Guests cannot connect or sync. The existing guest localStorage key is unchanged.
@@ -40,6 +52,8 @@ Home is the default view, with live library counts and shortcuts into tracking, 
 - Home dashboard with live collection summaries, useful shortcuts, and guest/account-specific guidance.
 - Existing AniList search/metadata, add/remove/move, episode controls, progress, filters/sorting, responsive UI, and statistics are retained.
 - Cohesive midnight-blue visual redesign across navigation, anime cards/posters, search, stats, account, Friends, Recommendations, empty/loading states, and dialogs.
+- Five independently selectable themes and three independently selectable Current/Reworked Old/New layouts; appearance follows a signed-in user or stays in guest-local storage.
+- Watching-only Miruro links resolve the exact AniList ID and open the next episode without modifying ListR progress or any AniList list.
 - Tactile hover/pressed/focus/loading states, responsive view/card transitions, and reduced-motion support while preserving accessible labels and visible keyboard focus.
 - Optional, short synthesized Web Audio cues for clicks, navigation, dialogs, successes, and errors; users can persistently switch sounds off, and cues are suppressed while media plays or the page is hidden.
 - Matching blue ListR vector favicon (`favicon_v2.svg`) and separate v2 design research/state notes.
@@ -53,11 +67,10 @@ python3 -m http.server 8000
 
 Visit <http://localhost:8000>. Supabase email-confirmation redirects must include the local URL in the project's Redirect URLs list. AniList search/refresh and cloud sync require network access; queued signed-in changes are retained for retry.
 
-Run the frontend logic tests with Node.js 18 or later:
+Run the frontend and resolver/migration source tests with Node.js 18 or later, from the repository root:
 
 ```bash
-cd anime-tracker
-node --test tests/*.test.mjs
+node --test anime-tracker/tests/*.test.mjs supabase/tests/*.test.mjs
 ```
 
 The Postgres RLS tests are in [`supabase/tests/anime_records_rls.test.sql`](supabase/tests/anime_records_rls.test.sql), [`supabase/tests/anilist_integration_v2.test.sql`](supabase/tests/anilist_integration_v2.test.sql), and [`supabase/tests/friends_recommendations_v2.test.sql`](supabase/tests/friends_recommendations_v2.test.sql). From the repository root, install the Supabase CLI and Docker, then run the local stack and tests using the checked-in `supabase/config.toml`:
@@ -76,7 +89,7 @@ The checked-in workflow at `.github/workflows/static.yml` copies `anime-tracker/
 
 ## Data and security notes
 
-- Guest mode uses the existing `localStorage` key and does not upload it. Signing in does not silently merge or delete it; the import banner provides an explicit, duplicate-safe choice.
+- Guest mode uses the existing tracker `localStorage` key and does not upload it. Appearance uses a separate guest/user preference key. Signing in does not silently merge or delete tracker data; the import banner provides an explicit, duplicate-safe choice.
 - Signed-in anime records live in Supabase. The browser keeps only the Supabase Auth session, a user-namespaced recovery cache, and a user-namespaced retry queue. Passwords are handled by Supabase Auth, never written by ListR to localStorage or the anime table.
-- Every table operation is constrained by RLS `auth.uid() = user_id`; the frontend also filters by user ID only as defense in depth. Never expose a secret/service-role key.
+- Anime and appearance rows are constrained by RLS `auth.uid() = user_id`; the frontend also scopes requests by user ID as defense in depth. Never expose a secret/service-role key.
 - AniList IDs are unique only within one user's library, so different users may track the same anime.

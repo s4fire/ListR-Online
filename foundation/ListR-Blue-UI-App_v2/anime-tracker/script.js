@@ -6,6 +6,8 @@ import { validateAuthFields } from './auth-validation.js';
 import { canUseAniListV2, clearAniListOAuthAttemptV2, invokeAniListActionV2, isPotentialAniListOAuthReturnV2, readAniListCallbackV2, readAniListOAuthAttemptV2, removeAniListCallbackParamsV2, safeAniListErrorMessageV2, shouldAutoSyncAniListV2, storeAniListOAuthAttemptV2, validateProgressResponseV2 } from './anilist-integration-v2.js';
 import { dismissRecommendationV2, getFriendStatsV2, getMyProfileV2, listFriendsV2, listReceivedRecommendationsV2, normalizeUsernameV2, respondFriendRequestV2, searchListRUsersV2, sendFriendRequestV2, setUsernameV2, socialErrorMessageV2, unfriendV2 } from './social-v2.js';
 import { initializeUIEffectsV2 } from './ui-effects-v2.js';
+import { createAppearanceControllerV2 } from './appearance-v2.js';
+import { buildMiruroEpisodeUrlV2, nextEpisodeNumberV2, resolveMiruroEpisodeUrlV2 } from './miruro-v2.js';
 
 // ----------------------------- App state -----------------------------------
 const STORE_KEY = 'afterglow-anime-tracker-v1';
@@ -74,6 +76,22 @@ const collectionGrid = $('#collection-grid');
 const collectionEmpty = $('#collection-empty');
 const searchResultsEl = $('#search-results');
 const searchMessage = $('#search-message');
+const appearanceController = createAppearanceControllerV2({
+  storage,
+  root: document.documentElement,
+  onStatus: ({ message, state }) => {
+    const status = $('#appearance-sync-status');
+    if (!status) return;
+    status.textContent = message;
+    status.className = `appearance-sync-status${state ? ` is-${state}` : ''}`;
+  },
+});
+
+function syncAppearanceOptions() {
+  const preference = appearanceController.getCurrent();
+  $$('[data-appearance-theme]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.appearanceTheme === preference.theme)));
+  $$('[data-appearance-layout]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.appearanceLayout === preference.layout)));
+}
 
 // ----------------------------- Storage -------------------------------------
 function persist() {
@@ -198,6 +216,10 @@ function renderCard(entry) {
   const totalKnown = isKnownTotal(meta.episodes);
   const total = totalKnown ? Math.floor(meta.episodes) : null;
   const watched = clampWatched(entry.watched, total);
+  const nextEpisode = watched + 1;
+  const watchNext = entry.category === 'watching'
+    ? `<button class="button button-primary watch-next-button" type="button" data-action="watch-next" data-id="${id}" data-episode="${nextEpisode}" aria-label="Open ${escapeHtml(title)}, episode ${nextEpisode}, on Miruro"><span class="watch-next-symbol" aria-hidden="true">▶</span><span class="watch-next-label">Watch on Miruro</span><span class="watch-next-episode">EP ${nextEpisode}</span><span class="watch-next-external" aria-hidden="true">↗</span></button>`
+    : '';
   const duration = Number.isFinite(meta.duration) && meta.duration > 0 ? `${meta.duration} min/episode` : '';
   const time = entry.category !== 'interested' && duration ? `<p class="card-time"><strong>${formatHours(watched * meta.duration)} hours watched</strong> <span>· est.</span></p>` : '';
   const statusChip = `<span class="meta-chip">${escapeHtml(formatStatus(meta.status))}</span>`;
@@ -214,7 +236,45 @@ function renderCard(entry) {
     const maxAttribute = totalKnown ? `max="${total}"` : '';
     controls = `<div class="episode-controls"><button class="step-button" type="button" data-action="decrease" data-id="${id}" aria-label="Decrease watched episodes for ${escapeHtml(title)}" ${watched <= 0 ? 'disabled' : ''}>−</button><label class="sr-only" for="watched-${id}">Watched episode count for ${escapeHtml(title)}</label><input id="watched-${id}" class="watched-input" type="number" inputmode="numeric" min="0" ${maxAttribute} step="1" value="${watched}" data-action="edit-count" data-id="${id}"><span class="control-total">of ${totalKnown ? total : '?'}</span><button class="step-button" type="button" data-action="increase" data-id="${id}" aria-label="Increase watched episodes for ${escapeHtml(title)}" ${(totalKnown && watched >= total) ? 'disabled' : ''}>+</button><span class="control-spacer"></span></div><div class="card-actions"><label class="sr-only" for="move-${id}">Move ${escapeHtml(title)} to another category</label><select id="move-${id}" class="move-select" data-action="move" data-id="${id}">${moveOptions(entry.category)}</select><button class="remove-button" data-action="remove" data-id="${id}" type="button">Remove</button></div>`;
   }
-  return `<article class="anime-card ${entry.category === 'interested' ? 'interested-card' : ''}" data-id="${id}"><div class="cover-wrap">${imageMarkup(meta, title)}<span class="cover-badge"><i></i>${escapeHtml(badgeLabel(entry))}</span></div><div class="card-body"><h3 class="card-title" title="${escapeHtml(title)}">${escapeHtml(title)}</h3><p class="card-subtitle">${escapeHtml(meta.title?.romaji && meta.title?.english ? meta.title.romaji : (meta.format ? String(meta.format).replaceAll('_', ' ') : releaseLabel(meta)))}</p>${progress}<div class="card-meta">${duration ? `<span class="meta-chip">${escapeHtml(duration)}</span>` : ''}${statusChip}${entry.category === 'interested' ? yearChip : ''}</div>${time}${controls}</div></article>`;
+  return `<article class="anime-card ${entry.category === 'interested' ? 'interested-card' : ''}" data-id="${id}"><div class="cover-wrap">${imageMarkup(meta, title)}<span class="cover-badge"><i></i>${escapeHtml(badgeLabel(entry))}</span></div><div class="card-body"><h3 class="card-title" title="${escapeHtml(title)}">${escapeHtml(title)}</h3><p class="card-subtitle">${escapeHtml(meta.title?.romaji && meta.title?.english ? meta.title.romaji : (meta.format ? String(meta.format).replaceAll('_', ' ') : releaseLabel(meta)))}</p>${progress}<div class="card-meta">${duration ? `<span class="meta-chip">${escapeHtml(duration)}</span>` : ''}${statusChip}${entry.category === 'interested' ? yearChip : ''}</div>${watchNext}${time}${controls}</div></article>`;
+}
+
+async function openMiruroNext(entry, button) {
+  if (!entry || entry.category !== 'watching') return;
+  const popup = window.open('about:blank', '_blank');
+  if (!popup) {
+    showToast('Your browser blocked the new tab. Allow pop-ups for ListR, then try Watch on Miruro again.', 'warning');
+    return;
+  }
+  try { popup.opener = null; } catch { /* the destination is still checked before navigation */ }
+
+  const originalContent = button.innerHTML;
+  button.disabled = true;
+  button.setAttribute('aria-busy', 'true');
+  button.innerHTML = '<span class="watch-next-spinner" aria-hidden="true"></span><span class="watch-next-label">Finding exact match…</span>';
+  try {
+    const result = await resolveMiruroEpisodeUrlV2(supabaseClient, entry, { storage });
+    const latest = entries.get(String(entry.id));
+    if (!latest || latest.category !== 'watching') {
+      popup.close();
+      showToast('This anime is no longer in Watching, so Miruro was not opened.');
+      return;
+    }
+    const episode = nextEpisodeNumberV2(latest);
+    const url = buildMiruroEpisodeUrlV2(result.watchUrl, episode);
+    if (!url) throw new Error('Miruro returned an invalid Watch link. Nothing was opened.');
+    popup.location.replace(url);
+    showToast(`Opening ${titleOf(latest)} on Miruro at episode ${episode}.`, 'success');
+  } catch (error) {
+    try { popup.close(); } catch { /* browser may have closed the placeholder already */ }
+    showToast(error?.message || 'Could not find an exact Miruro match. Nothing was opened.', 'error');
+  } finally {
+    if (button.isConnected) {
+      button.disabled = false;
+      button.removeAttribute('aria-busy');
+      button.innerHTML = originalContent;
+    }
+  }
 }
 
 function moveOptions(current) {
@@ -537,6 +597,7 @@ function enterGuest(message = '') {
   activatingUserId = null;
   activeUserLoad = null;
   currentUser = null;
+  void appearanceController.activateAccount(supabaseClient, null).then(syncAppearanceOptions);
   cloudLibraryReady = false;
   resetSocialState();
   resetAniListPanel();
@@ -554,6 +615,7 @@ function enterGuest(message = '') {
 async function activateUser(user) {
   if (!user?.id) { enterGuest('Could not restore the account session. Your guest list is still available.'); return; }
   const userId = String(user.id);
+  void appearanceController.activateAccount(supabaseClient, userId).then(syncAppearanceOptions);
   if (currentUser?.id === userId && cloudLibraryReady) {
     void loadMyProfileForMenu(userId).catch(() => {});
     void initializeAniListForUser(userId);
@@ -1695,6 +1757,20 @@ document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && !$('#profile-dropdown').hidden) setProfileMenuOpen(false, { restoreFocus: true });
 });
 $$('.profile-dropdown-link').forEach((button) => button.addEventListener('click', () => setView(button.dataset.view)));
+$('#open-appearance').addEventListener('click', () => {
+  setProfileMenuOpen(false);
+  syncAppearanceOptions();
+  $('#appearance-dialog').showModal();
+});
+$('#close-appearance').addEventListener('click', () => $('#appearance-dialog').close());
+$('#appearance-dialog').addEventListener('close', () => $('#open-appearance').focus());
+$('#appearance-dialog').addEventListener('click', (event) => {
+  const theme = event.target.closest('[data-appearance-theme]');
+  const layout = event.target.closest('[data-appearance-layout]');
+  if (theme) appearanceController.setTheme(theme.dataset.appearanceTheme);
+  if (layout) appearanceController.setLayout(layout.dataset.appearanceLayout);
+  syncAppearanceOptions();
+});
 $('#auth-tab-login').addEventListener('click', () => setAuthMode('login'));
 $('#auth-tab-register').addEventListener('click', () => setAuthMode('register'));
 $('#close-auth').addEventListener('click', () => $('#auth-dialog').close());
@@ -1853,6 +1929,10 @@ collectionGrid.addEventListener('click', (event) => {
   if (!button) return;
   const entry = entries.get(String(button.dataset.id));
   if (!entry) return;
+  if (button.dataset.action === 'watch-next') {
+    if (entry.category === 'watching') void openMiruroNext(entry, button);
+    return;
+  }
   const total = entry.meta?.episodes;
   if (button.dataset.action === 'increase') setWatched(entry.id, (entry.watched || 0) + 1);
   if (button.dataset.action === 'decrease') setWatched(entry.id, (entry.watched || 0) - 1);
@@ -1895,5 +1975,6 @@ else if (CATEGORIES[initialHash]) activeView = initialHash;
 const authCallbackInUrl = /(?:access_token|code|error|error_description)=/.test(`${window.location.search}&${window.location.hash}`);
 setView(activeView, { updateHash: !authCallbackInUrl });
 render();
+syncAppearanceOptions();
 initializeUIEffectsV2();
 void initializeAccount();

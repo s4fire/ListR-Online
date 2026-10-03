@@ -19,6 +19,8 @@ A personal anime tracker built with **HTML5, CSS3, and vanilla JavaScript**. Gue
 - Friends search/requests and accepted-friend-only aggregate stats; profiles never expose email or private anime titles.
 - Recipient-only anime recommendations, with explicit dismiss or acceptance; accepting adds/moves to ListR Interested only and never writes to AniList.
 - A Home dashboard with live tracker summaries, direct navigation shortcuts, and account-aware guest guidance.
+- Five selectable themes (Sub-Zero, Onyx, Cosmic, Emerald, Soft Light) and three separate page layouts (Current, Reworked Old, New); guest preferences are local and signed-in preferences use owner-only RLS.
+- A Watching-only **Watch on Miruro** action that resolves the exact AniList media ID and opens the next episode; it never changes ListR progress or AniList lists.
 - Stats, Friends, and Recommendations live in a profile dropdown; the recommendation composer keeps results scrollable above a fixed selected-anime preview and Send action.
 - A cohesive midnight-blue interface with responsive anime/poster cards, polished forms/dialogs, tactile control states, short transitions, and accessible reduced-motion behavior.
 - Optional synthesized UI sounds with a persistent, accessible mute switch; sound never carries essential feedback and is suppressed while browser media is playing or the page is hidden.
@@ -32,7 +34,10 @@ A personal anime tracker built with **HTML5, CSS3, and vanilla JavaScript**. Gue
 index.html       App shell and accessible page structure
 style.css        Responsive midnight-blue UI, dashboard and collection styles
 account.css      Matching account, AniList, social, and dialog styles
+appearance-v2.css Five-theme and three-layout design tokens and responsive arrangements
 script.js        View rendering, tracker controls, auth state, and sync events
+appearance-v2.js User-scoped appearance loading, validation, and persistence
+miruro-v2.js     Exact-match resolver client and allowlisted episode URL builder
 ui-effects-v2.js Optional Web Audio feedback and persisted sound preference
 favicon_v2.svg   Blue ListR browser icon
 api.js           AniList GraphQL search and metadata-refresh client
@@ -45,7 +50,7 @@ supabase-config.js  Public Supabase project URL and publishable key only
 tests/*.test.mjs  Dependency-free tracker, API, auth, cloud, social, and UI-effects tests
 ```
 
-See the repository [setup and security guide](../README.md) for the required database migration, email redirect allow-list, RLS tests, and GitHub Pages instructions. AniList v2 owner setup is documented in [`../ANILIST_INTEGRATION_v2.md`](../ANILIST_INTEGRATION_v2.md); Friends and Recommendations v2 migration, privacy, ListR-only acceptance, and deployment steps are in [`../FRIENDS_RECOMMENDATIONS_v2.md`](../FRIENDS_RECOMMENDATIONS_v2.md).
+See the repository [setup and security guide](../README.md) for the required database migrations, email redirect allow-list, RLS tests, and GitHub Pages instructions. AniList v2 owner setup is documented in [`../ANILIST_INTEGRATION_v2.md`](../ANILIST_INTEGRATION_v2.md); Friends and Recommendations v2 migration, privacy, ListR-only acceptance, and deployment steps are in [`../FRIENDS_RECOMMENDATIONS_v2.md`](../FRIENDS_RECOMMENDATIONS_v2.md). Appearance/Miruro setup and the route evidence are in [`../APPEARANCE_MIRURO_v2.md`](../APPEARANCE_MIRURO_v2.md) and [`../MIRURO_ROUTING_RESEARCH_v2.md`](../MIRURO_ROUTING_RESEARCH_v2.md).
 
 ## Run locally
 
