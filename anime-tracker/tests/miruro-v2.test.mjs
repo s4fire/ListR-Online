@@ -59,23 +59,45 @@ test('episode links use Miruro’s verified ep query and reject non-Miruro desti
   assert.equal(buildMiruroEpisodeUrlV2('https://www.miruro.tv/watch/id/title', 0), null);
 });
 
-test('only Watching entries reach the resolver; cache retains the series and recomputes the latest episode', async () => {
-  const storage = mockStorage();
+test('Watching entries use a fresh resolver lookup and calculate the continuation episode', async () => {
   let invokes = 0;
   const client = { functions: { invoke: async (_name, { body }) => {
     invokes += 1;
     assert.equal(body.media.mediaId, 195516);
-    return { data: { matched: true, anilistMediaId: 195516, watchUrl: 'https://www.miruro.tv/watch/EHT-j9hg7K6M__5XDixVgMh9rKe6Nwcz/the-apothecary-diaries-season-3' }, error: null };
+    return { data: {
+      matched: true,
+      anilistMediaId: 195516,
+      watchUrl: 'https://www.miruro.tv/watch/EHT-j9hg7K6M__5XDixVgMh9rKe6Nwcz/the-apothecary-diaries-season-3',
+    }, error: null };
   } } };
-  const first = await resolveMiruroEpisodeUrlV2(client, entry({ watched: 0 }), { storage, now: 1_000 });
+
+  const first = await resolveMiruroEpisodeUrlV2(client, entry({ watched: 0 }), { storage: mockStorage() });
   assert.equal(first.episode, 1);
-  assert.equal(new URL(first.url).searchParams.get('ep'), '1');
-  const later = await resolveMiruroEpisodeUrlV2(client, entry({ watched: 6 }), { storage, now: 2_000 });
+  assert.equal(first.url, 'https://www.miruro.tv/watch/EHT-j9hg7K6M__5XDixVgMh9rKe6Nwcz/the-apothecary-diaries-season-3?ep=1');
+
+  const later = await resolveMiruroEpisodeUrlV2(client, entry({ watched: 6 }), { storage: mockStorage() });
   assert.equal(later.episode, 7);
-  assert.equal(new URL(later.url).searchParams.get('ep'), '7');
-  assert.equal(invokes, 1);
-  await assert.rejects(resolveMiruroEpisodeUrlV2(client, entry({ category: 'interested' }), { storage }), /only for anime in your Watching list/i);
-  assert.equal(invokes, 1);
+  assert.equal(later.url, 'https://www.miruro.tv/watch/EHT-j9hg7K6M__5XDixVgMh9rKe6Nwcz/the-apothecary-diaries-season-3?ep=7');
+  assert.equal(invokes, 2);
+
+  await assert.rejects(
+    resolveMiruroEpisodeUrlV2(client, entry({ category: 'interested' }), { storage: mockStorage() }),
+    /only for anime in your Watching list/i,
+  );
+  assert.equal(invokes, 2);
+});
+
+test('resolver surfaces HTTP errors without mislabeling them as connectivity failures', async () => {
+  const client = { functions: { invoke: async () => ({
+    data: null,
+    error: Object.assign(new Error('HTTP error'), {
+      context: { status: 502, json: async () => ({ error: 'Miruro could not be checked right now.' }) },
+    }),
+  }) } };
+  await assert.rejects(
+    resolveMiruroEpisodeUrlV2(client, entry(), { storage: mockStorage() }),
+    /Miruro resolver error \(502\): Miruro could not be checked right now/i,
+  );
 });
 
 test('an AniList ID mismatch or invalid server URL never opens a Miruro link', async () => {

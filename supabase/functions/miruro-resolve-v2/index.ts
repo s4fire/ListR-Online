@@ -113,7 +113,7 @@ Deno.serve(async (request) => {
   if (cached && cached.expiresAt > Date.now()) {
     return cached.value
       ? json(cached.value)
-      : json({ matched: false, anilistMediaId: mediaId }, 404);
+      : json({ matched: false, anilistMediaId: mediaId, reason: 'no-exact-match' });
   }
   if (cached) cache.delete(key);
 
@@ -121,7 +121,7 @@ Deno.serve(async (request) => {
     const match = await resolveMiruroMatchV2({ mediaId, titles }, fetch);
     if (!match || match.anilistMediaId !== mediaId) {
       cachePut(key, null);
-      return json({ matched: false, anilistMediaId: mediaId }, 404);
+      return json({ matched: false, anilistMediaId: mediaId, reason: 'no-exact-match' });
     }
     const result = {
       matched: true,

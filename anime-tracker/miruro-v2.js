@@ -52,48 +52,44 @@ export function buildMiruroEpisodeUrlV2(watchUrl, episode) {
   return url.toString();
 }
 
-function cacheKey(mediaId) { return `${MIRURO_CACHE_PREFIX_V2}${mediaId}`; }
-
-function readCachedWatchUrl(storage, mediaId, now) {
+async function readFunctionsErrorV2(error) {
+  const status = Number(error?.context?.status ?? error?.statusCode ?? 0) || null;
+  let body = null;
   try {
-    const raw = storage?.getItem(cacheKey(mediaId));
-    const cached = raw ? JSON.parse(raw) : null;
-    if (!cached || Number(cached.mediaId) !== mediaId || !Number.isFinite(cached.expiresAt) || cached.expiresAt <= now) return null;
-    return buildMiruroEpisodeUrlV2(cached.watchUrl, 1) ? String(cached.watchUrl) : null;
-  } catch {
-    return null;
-  }
+    if (error?.context?.json) body = await error.context.json();
+  } catch { /* error body is optional */ }
+  return {
+    status,
+    message: typeof body?.error === 'string' ? body.error : '',
+    code: typeof body?.code === 'string' ? body.code : '',
+  };
 }
 
-function writeCachedWatchUrl(storage, mediaId, watchUrl, now) {
-  try {
-    storage?.setItem(cacheKey(mediaId), JSON.stringify({
-      mediaId,
-      watchUrl,
-      expiresAt: now + MIRURO_CACHE_TTL_MS_V2,
-    }));
-  } catch { /* the resolver still works if browser storage is full or disabled */ }
-}
-
-export async function resolveMiruroEpisodeUrlV2(client, entry, { storage = globalThis.localStorage, now = Date.now() } = {}) {
+export async function resolveMiruroEpisodeUrlV2(client, entry, { storage: _storage } = {}) {
   const episode = nextEpisodeNumberV2(entry);
   if (!episode) throw new Error('Miruro Watch is available only for anime in your Watching list.');
   const media = buildMiruroPayloadV2(entry);
-  let watchUrl = readCachedWatchUrl(storage, media.mediaId, now);
 
-  if (!watchUrl) {
-    if (!client?.functions?.invoke) throw new Error('The Miruro resolver is unavailable. Check the ListR Supabase configuration and try again.');
-    const { data, error } = await client.functions.invoke(MIRURO_RESOLVER_FUNCTION_V2, { body: { media } });
-    if (error) throw new Error('Could not resolve this AniList anime in Miruro. Check your connection and try again.');
-    if (!data?.matched || Number(data.anilistMediaId) !== media.mediaId) {
-      throw new Error('No exact AniList match was found on Miruro. Nothing was opened; try refreshing this anime’s metadata later.');
-    }
-    watchUrl = String(data.watchUrl || '');
-    if (!buildMiruroEpisodeUrlV2(watchUrl, episode)) throw new Error('Miruro returned an invalid Watch page. Nothing was opened.');
-    writeCachedWatchUrl(storage, media.mediaId, watchUrl, now);
+  if (!client?.functions?.invoke) {
+    throw new Error('The Miruro resolver is unavailable. Check the ListR Supabase configuration and try again.');
   }
 
+  const { data, error } = await client.functions.invoke(MIRURO_RESOLVER_FUNCTION_V2, { body: { media } });
+  if (error) {
+    const details = await readFunctionsErrorV2(error);
+    if (details.status === 404) {
+      throw new Error('The Miruro resolver endpoint could not be found. The ListR server configuration needs to be refreshed.');
+    }
+    if (details.status && details.message) throw new Error('Miruro resolver error (' + details.status + '): ' + details.message);
+    if (details.message) throw new Error(details.message);
+    throw new Error('Could not reach the Miruro resolver. Check your connection and try again.');
+  }
+  if (!data?.matched || Number(data.anilistMediaId) !== media.mediaId) {
+    throw new Error('No exact AniList match was found in Miruro. Nothing was opened; try again later.');
+  }
+
+  const watchUrl = String(data.watchUrl || '');
   const url = buildMiruroEpisodeUrlV2(watchUrl, episode);
-  if (!url) throw new Error('The saved Miruro Watch page is no longer valid. Try again to resolve it.');
+  if (!url) throw new Error('Miruro returned an invalid Watch page. Nothing was opened.');
   return { url, watchUrl, episode, mediaId: media.mediaId };
 }
