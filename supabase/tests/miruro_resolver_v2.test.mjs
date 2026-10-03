@@ -32,10 +32,10 @@ async function catalogResponse(items) {
   return new Response(gzip, { status: 200, headers: { 'content-type': 'application/octet-stream' } });
 }
 
-function catalogItem(id, title = 'The Sample Anime Season 2') {
+function catalogItem(id, title = 'The Sample Anime Season 2', includeTitle = true) {
   return {
     id: 'opaque-123',
-    title: { english: title, romaji: 'Sample Anime 2nd Season' },
+    ...(includeTitle ? { title: { english: title, romaji: 'Sample Anime 2nd Season' } } : {}),
     external_ids: { anilist: [String(id)] },
     episode_count: 12,
   };
@@ -55,7 +55,7 @@ test('info-page identity requires the exact AniList sameAs ID and a safe watch t
   assert.equal(extractMiruroAniListMatchV2(infoHtml(42).replace(watchUrl, 'https://evil.example/watch/id/title'), 42), null);
 });
 
-test('resolver queries the official catalog, filters by exact AniList ID, then confirms info-page JSON-LD', async () => {
+test('resolver queries the official catalog and returns the opaque Watch URL for an exact AniList match', async () => {
   const requested = [];
   const fetcher = async (input) => {
     const url = new URL(input);
@@ -64,7 +64,7 @@ test('resolver queries the official catalog, filters by exact AniList ID, then c
     if (url.pathname === '/api/v1/anime') {
       return catalogResponse([
         catalogItem(999, 'A similar but different series'),
-        catalogItem(42),
+        catalogItem(42, 'The Sample Anime Season 2', false),
       ]);
     }
     if (url.pathname === '/info/opaque-123/the-sample-anime-season-2') {
@@ -78,30 +78,29 @@ test('resolver queries the official catalog, filters by exact AniList ID, then c
     anilistMediaId: 42,
     watchUrl,
     title: 'The Sample Anime Season 2',
-    episodes: 12,
+    episodes: null,
   });
   assert.equal(requested.some((url) => url.pathname === '/api/v1/anime'
     && url.searchParams.get('q') === 'The Sample Anime Season 2'
     && url.searchParams.get('limit') === '15'
     && url.searchParams.get('sort') === '-popularity'), true);
-  assert.equal(requested.some((url) => url.pathname === '/info/opaque-123/the-sample-anime-season-2'), true);
+  assert.equal(requested.some((url) => url.pathname === '/info/opaque-123/the-sample-anime-season-2'), false);
   assert.equal(requested.some((url) => url.pathname === '/search'), false);
   assert.equal(requested.some((url) => url.pathname.startsWith('/watch/')), false);
   assert.equal(requested.some((url) => /player|stream|embed/i.test(url.pathname)), false);
 });
 
-test('a catalog title resemblance without the exact external AniList ID never resolves', async () => {
+test('a non-matching AniList ID still does not resolve when the title is only a close catalogue result', async () => {
   const requested = [];
   const fetcher = async (input) => {
     const url = new URL(input);
     requested.push(url);
-    if (url.pathname === '/api/v1/anime') return catalogResponse([catalogItem(999)]);
-    if (url.pathname === '/search') return new Response(searchHtml, { status: 200 });
-    if (url.pathname.startsWith('/info/')) return new Response(infoHtml(999), { status: 200 });
+    if (url.pathname === '/api/v1/anime') return catalogResponse([catalogItem(999, 'The Sample Anime Season X')]);
+    if (url.pathname === '/search') return new Response('<html><body>No matching anime</body></html>', { status: 200 });
     return new Response('', { status: 404 });
   };
   assert.equal(await resolveMiruroMatchV2({ mediaId: 42, titles: ['The Sample Anime Season 2'] }, fetcher), null);
-  assert.equal(requested.some((url) => url.pathname.startsWith('/info/')), true);
+  assert.equal(requested.some((url) => url.pathname.startsWith('/info/')), false);
   assert.equal(requested.some((url) => url.pathname.startsWith('/watch/')), false);
 });
 
@@ -158,14 +157,13 @@ test('resolver never fabricates a numeric AniList-ID watch route when Miruro dis
   assert.equal(requested.some((url) => /^\/info\/42\//u.test(url.pathname)), false);
 });
 
-test('legacy server-rendered search links remain a fallback and are still verified against exact JSON-LD', async () => {
+test('legacy server-rendered search links remain a fallback when the catalogue is unavailable', async () => {
   const requested = [];
   const fetcher = async (input) => {
     const url = new URL(input);
     requested.push(url);
     if (url.pathname === '/api/v1/anime') return new Response('unavailable', { status: 503 });
     if (url.pathname === '/search') return new Response(searchHtml, { status: 200, headers: { 'content-type': 'text/html' } });
-    if (url.pathname === '/info/opaque-123/the-sample-anime-season-2') return new Response(infoHtml(42), { status: 200 });
     return new Response('', { status: 404 });
   };
   const match = await resolveMiruroMatchV2({ mediaId: 42, titles: ['The Sample Anime Season 2'] }, fetcher);
