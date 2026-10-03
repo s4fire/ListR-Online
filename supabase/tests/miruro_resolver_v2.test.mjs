@@ -105,20 +105,37 @@ test('a catalog title resemblance without the exact external AniList ID never re
   assert.equal(requested.some((url) => url.pathname.startsWith('/watch/')), false);
 });
 
-test('catalog title fallback can resolve when Miruro omits the AniList mapping, but info JSON-LD must still match', async () => {
+test('strong title fallback can use the real Miruro opaque Watch URL when AniList mapping is omitted', async () => {
+  const requested = [];
   const fetcher = async (input) => {
     const url = new URL(input);
+    requested.push(url);
     if (url.origin !== 'https://www.miruro.tv') return new Response('', { status: 404 });
     if (url.pathname === '/api/v1/anime') return catalogResponse([catalogItem(999, 'The Sample Anime Season 2')]);
-    if (url.pathname === '/info/opaque-123/the-sample-anime-season-2') {
-      return new Response(infoHtml(42), { status: 200, headers: { 'content-type': 'text/html' } });
-    }
-    return new Response('', { status: 404 });
+    throw new Error('The resolver should not need to fetch the info page for a strong title fallback.');
   };
 
   const match = await resolveMiruroMatchV2({ mediaId: 42, titles: ['The Sample Anime Season 2'] }, fetcher);
   assert.equal(match?.anilistMediaId, 42);
   assert.equal(match?.watchUrl, watchUrl);
+  assert.equal(requested.some((url) => url.pathname === '/api/v1/anime'), true);
+  assert.equal(requested.some((url) => url.pathname.startsWith('/info/')), false);
+});
+
+test('exact AniList catalog match returns Miruro opaque Watch URL without requiring AniList JSON-LD on the info page', async () => {
+  const requested = [];
+  const fetcher = async (input) => {
+    const url = new URL(input);
+    requested.push(url);
+    if (url.origin !== 'https://www.miruro.tv') return new Response('', { status: 404 });
+    if (url.pathname === '/api/v1/anime') return catalogResponse([catalogItem(42)]);
+    throw new Error('The resolver should not need to fetch the info page after an exact catalog match.');
+  };
+
+  const match = await resolveMiruroMatchV2({ mediaId: 42, titles: ['The Sample Anime Season 2'] }, fetcher);
+  assert.equal(match?.anilistMediaId, 42);
+  assert.equal(match?.watchUrl, watchUrl);
+  assert.equal(requested.every((url) => url.pathname === '/api/v1/anime'), true);
 });
 
 test('an actual Miruro opaque watch route is preserved with episode query parameters', async () => {
