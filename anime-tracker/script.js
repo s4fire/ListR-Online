@@ -642,25 +642,28 @@ async function activateUser(user) {
   return task;
 }
 
-function flushCloudQueue(userId) {
+function flushCloudQueue(userId, options = {}) {
   const uid = String(userId);
+  const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
+  const trackedIds = options.trackedIds instanceof Set ? options.trackedIds : null;
   if (activeFlushes.has(uid)) return activeFlushes.get(uid);
   if (!supabaseClient || !currentUser || currentUser.id !== uid) return Promise.resolve();
   if (navigator.onLine === false) {
-    setSyncStatus('Offline — changes are queued on this device and will sync when online.', 'pending');
+    setSyncStatus('Offline — changes are queued on this device.', 'pending');
     return Promise.resolve();
   }
   let task;
   task = Promise.resolve().then(async () => {
     try {
       let pending = readOutbox(storage, uid);
+      let trackedCompleted = 0;
       while (pending.length && currentUser?.id === uid) {
         const operation = pending[0];
         try {
           if (operation.type === 'delete') await removeUserEntry(supabaseClient, uid, operation.mediaId);
           else await saveUserEntry(supabaseClient, uid, operation.entry, { ignoreDuplicates: operation.ignoreDuplicates });
         } catch (error) {
-          setSyncStatus(`${cloudErrorMessage(error)} Queued changes are retained for retry.`, 'error');
+          setSyncStatus(cloudErrorMessage(error) + ' Queued changes are retained for retry.', 'error');
           return;
         }
         const removed = removeCompletedOperation(storage, uid, operation.operationId);
@@ -668,10 +671,19 @@ function flushCloudQueue(userId) {
           setSyncStatus('Cloud accepted a change, but the local queue could not be updated. Sign in again to retry safely.', 'error');
           return;
         }
+        if (trackedIds?.has(String(operation.mediaId))) {
+          trackedCompleted += 1;
+          if (onProgress) onProgress({ completed: trackedCompleted, total: trackedIds.size, operation });
+        }
         pending = removed.operations;
       }
       if (currentUser?.id === uid) {
-        setSyncStatus(pending.length ? `${pending.length} change${pending.length === 1 ? '' : 's'} waiting to sync.` : 'All changes saved.', pending.length ? 'pending' : 'ok');
+        setSyncStatus(
+          pending.length
+            ? pending.length + ' change' + (pending.length === 1 ? '' : 's') + ' waiting to sync.'
+            : 'All changes saved.',
+          pending.length ? 'pending' : 'ok'
+        );
       }
     } finally {
       if (activeFlushes.get(uid) === task) activeFlushes.delete(uid);
@@ -680,7 +692,6 @@ function flushCloudQueue(userId) {
   activeFlushes.set(uid, task);
   return task;
 }
-
 function aniListSessionStorage() {
   try { return window.sessionStorage; } catch { return null; }
 }
@@ -1054,34 +1065,101 @@ async function signOut() {
   }
 }
 
+function updateMigrationProgress(label, completed, total, state = 'active') {
+  const progress = $('#migration-progress');
+  const bar = $('#migration-progress-bar');
+  if (!progress || !bar) return;
+  progress.hidden = false;
+  progress.classList.toggle('is-complete', state === 'complete');
+  $('#migration-progress-text').textContent = String(label || '');
+  $('#migration-progress-count').textContent = total ? String(Math.min(completed, total)) + ' / ' + String(total) : '';
+  bar.max = Math.max(1, total || 1);
+  bar.value = Math.max(0, Math.min(completed, total || 0));
+}
+
+function hideMigrationProgress() {
+  const progress = $('#migration-progress');
+  if (!progress) return;
+  progress.hidden = true;
+  progress.classList.remove('is-complete');
+}
+
 async function importGuestLibrary() {
   if (!currentUser || !cloudLibraryReady) return;
   const userId = currentUser.id;
   const guestEntries = readEntries(storage, STORE_KEY);
-  const candidates = guestEntries.filter((entry) => !entries.has(String(entry.id)));
+  const queuedIds = new Set(
+    readOutbox(storage, userId)
+      .filter((operation) => operation.type === 'upsert')
+      .map((operation) => String(operation.mediaId))
+  );
+  const uniqueGuests = [...new Map(guestEntries.map((entry) => [String(entry.id), entry])).values()];
+  const candidates = uniqueGuests.filter((entry) => !entries.has(String(entry.id)) && !queuedIds.has(String(entry.id)));
   if (!candidates.length) {
+    hideMigrationProgress();
     rememberImportDismissal(userId);
-    showToast('Every guest anime is already in this cloud library. Nothing was overwritten.');
+    showToast('Nothing new to import. Existing cloud anime were left untouched.');
     return;
   }
+
+  const total = candidates.length;
+  const trackedIds = new Set(candidates.map((entry) => String(entry.id)));
+  const button = $('#import-guest');
+  const later = $('#dismiss-import');
+  button.disabled = true;
+  later.disabled = true;
+  updateMigrationProgress('Preparing your guest list…', 0, total);
+  setSyncStatus('Importing ' + total + ' anime…', 'pending');
+
+  let prepared = 0;
   for (const entry of candidates) {
-    entries.set(String(entry.id), entry);
     const result = enqueueCloudOperation(storage, userId, {
-      type: 'upsert', mediaId: entry.id, entry, ignoreDuplicates: true
+      type: 'upsert',
+      mediaId: entry.id,
+      entry,
+      ignoreDuplicates: true,
     });
     if (!result.ok) {
-      setSyncStatus('Import could not be queued. Check browser storage and retry.', 'error');
-      showToast('The guest list is unchanged; browser storage could not queue the import.');
-      render();
+      updateMigrationProgress('Could not prepare ' + titleOf(entry) + ' for import.', prepared, total);
+      setSyncStatus('Import paused. Your guest list is unchanged; fix browser storage and retry.', 'error');
+      showToast('The import is paused. Nothing was removed from the guest list.', 'error');
+      button.disabled = false;
+      later.disabled = false;
+      button.textContent = 'Retry import';
       return;
     }
+    prepared += 1;
+    updateMigrationProgress('Prepared ' + prepared + ' imported anime for upload…', prepared, total);
   }
-  persist();
-  render();
-  rememberImportDismissal(userId);
-  setSyncStatus(`Importing ${candidates.length} new anime…`, 'pending');
-  await flushCloudQueue(userId);
-  if (currentUser?.id !== userId || readOutbox(storage, userId).length) return;
+
+  updateMigrationProgress('Saving your imported anime to the cloud…', 0, total);
+  await flushCloudQueue(userId, {
+    trackedIds,
+    onProgress: ({ completed, total: trackedTotal }) => {
+      updateMigrationProgress('Saved ' + completed + ' of ' + trackedTotal + ' imported anime…', completed, trackedTotal);
+    },
+  });
+
+  if (currentUser?.id !== userId) return;
+  const pendingTracked = new Set(
+    readOutbox(storage, userId)
+      .filter((operation) => trackedIds.has(String(operation.mediaId)))
+      .map((operation) => String(operation.mediaId))
+  );
+  if (pendingTracked.size) {
+    updateMigrationProgress(
+      String(pendingTracked.size) + ' anime are still queued. We’ll keep them ready to retry.',
+      total - pendingTracked.size,
+      total
+    );
+    setSyncStatus('Import is waiting on the connection. ' + pendingTracked.size + ' anime remain queued.', 'pending');
+    button.disabled = false;
+    later.disabled = false;
+    button.textContent = 'Retry import';
+    return;
+  }
+
+  updateMigrationProgress('Verifying the imported list…', total, total);
   try {
     const remote = await loadUserEntries(supabaseClient, userId);
     if (currentUser?.id !== userId) return;
@@ -1089,13 +1167,23 @@ async function importGuestLibrary() {
     for (const entry of remote) entries.set(String(entry.id), entry);
     writeCloudCache(storage, userId, remote);
     render();
+    updateMigrationProgress(
+      'Import complete. ' + total + ' ' + (total === 1 ? 'anime is' : 'anime are') + ' now in your cloud list.',
+      total,
+      total,
+      'complete'
+    );
     updateMigrationBanner();
-    showToast(`Imported ${candidates.length} anime. Your guest list remains on this browser.`);
+    rememberImportDismissal(userId);
+    showToast('Imported ' + total + ' anime. Your guest list is still on this browser.', 'success');
   } catch (error) {
-    setSyncStatus(`${cloudErrorMessage(error)} The queued import remains available for retry.`, 'error');
+    updateMigrationProgress('Imported data was saved, but verification could not finish.', total, total);
+    setSyncStatus(cloudErrorMessage(error) + ' The import remains safe to retry.', 'error');
+    button.disabled = false;
+    later.disabled = false;
+    button.textContent = 'Retry import';
   }
 }
-
 // ----------------------------- Friends and recommendations v2 --------------
 function setFriendsMessage(message, type = '') {
   const element = $('#friends-message');
