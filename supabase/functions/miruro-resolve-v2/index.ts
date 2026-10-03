@@ -1,4 +1,4 @@
-import { MIRURO_RESOLVER_LIMITS_V2, resolveMiruroMatchV2 } from '../_shared/miruro-resolver-v2.mjs';
+import { MIRURO_RESOLVER_LIMITS_V2, resolveMiruroMatchV2 } from './_shared/miruro-resolver-v2.mjs';
 
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const CACHE_MAX = 300;
@@ -113,7 +113,7 @@ Deno.serve(async (request) => {
   if (cached && cached.expiresAt > Date.now()) {
     return cached.value
       ? json(cached.value)
-      : json({ matched: false, anilistMediaId: mediaId }, 404);
+      : json({ matched: false, anilistMediaId: mediaId, reason: 'no-exact-match' });
   }
   if (cached) cache.delete(key);
 
@@ -121,7 +121,7 @@ Deno.serve(async (request) => {
     const match = await resolveMiruroMatchV2({ mediaId, titles }, fetch);
     if (!match || match.anilistMediaId !== mediaId) {
       cachePut(key, null);
-      return json({ matched: false, anilistMediaId: mediaId }, 404);
+      return json({ matched: false, anilistMediaId: mediaId, reason: 'no-exact-match' });
     }
     const result = {
       matched: true,
