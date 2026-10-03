@@ -783,7 +783,7 @@ async function initializeAniListForUser(userId, { forceStatus = false, allowAuto
         lastSyncedAt: status.lastSyncedAt || null,
         message: status.state === 'connected'
           ? `Connected as ${status.username}. ListR only updates matching anime already in this account.`
-          : (status.state === 'error' ? (status.message || 'AniList needs to be reconnected.') : 'Connect AniList to sync viewing progress from Miruro and other services.'),
+          : (status.state === 'error' ? (status.message || 'AniList needs to be reconnected.') : 'Connect AniList to sync your viewing progress.'),
         messageType: status.state === 'error' ? 'error' : '',
       });
       if (allowAutoSync) void maybeAutoSyncAniList(uid);
@@ -1887,10 +1887,6 @@ collectionGrid.addEventListener('click', (event) => {
   if (!button) return;
   const entry = entries.get(String(button.dataset.id));
   if (!entry) return;
-  if (button.dataset.action === 'watch-next') {
-    if (entry.category === 'watching') void openMiruroNext(entry, button);
-    return;
-  }
   const total = entry.meta?.episodes;
   if (button.dataset.action === 'increase') setWatched(entry.id, (entry.watched || 0) + 1);
   if (button.dataset.action === 'decrease') setWatched(entry.id, (entry.watched || 0) - 1);
