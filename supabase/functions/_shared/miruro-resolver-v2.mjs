@@ -414,19 +414,42 @@ async function searchHtmlCandidatesV2(fetcher, titles) {
     }
   }
 
-  // Prefer exact AniList catalog mappings. If Miruro omitted that mapping, use a strongly
-  // title-matched catalog candidate, then independently verify the exact AniList ID on the info page.
-  let candidates = [...catalogCandidates.values()].slice(0, MIRURO_RESOLVER_LIMITS_V2.candidates);
-  if (!candidates.length) candidates = [...titleCandidates.values()].slice(0, MIRURO_RESOLVER_LIMITS_V2.candidates);
+  // The current Miruro site exposes its own opaque route IDs. Once Miruro's catalogue
+  // search gives us the result for the requested AniList ID, use that real Watch URL directly.
+  // Do not require the info page to repeat the AniList ID in JSON-LD; current pages may not expose it.
+  const exactCandidate = [...catalogCandidates.values()][0];
+  if (exactCandidate) {
+    return {
+      anilistMediaId: media.mediaId,
+      watchUrl: exactCandidate.watchUrl,
+      title: exactCandidate.names[0] || '',
+      episodes: null,
+    };
+  }
 
-  // Never fabricate a Miruro route from the AniList ID. The current site can use
-  // opaque route IDs, so every returned Watch URL must come from Miruro's own catalogue/search.
-  if (!candidates.length) candidates = await searchHtmlCandidatesV2(fetcher, queries);
-  if (!candidates.length) return null;
+  // If Miruro's catalogue omits the AniList mapping, fall back to the strongest title result.
+  // This still uses a URL discovered from Miruro; it never constructs an opaque ID locally.
+  const titleCandidate = [...titleCandidates.values()]
+    .sort((a, b) => titleScoreV2(b.names, media.titles) - titleScoreV2(a.names, media.titles))[0];
+  if (titleCandidate) {
+    return {
+      anilistMediaId: media.mediaId,
+      watchUrl: titleCandidate.watchUrl,
+      title: titleCandidate.names[0] || '',
+      episodes: null,
+    };
+  }
 
-  const matches = await Promise.all(candidates.map(async (candidate) => {
-    const html = await fetchHtmlV2(fetcher, candidate.infoUrl, MIRURO_RESOLVER_LIMITS_V2.timeoutMs);
-    return extractMiruroAniListMatchV2(html, media.mediaId, candidate.watchUrl, candidate.infoUrl);
-  }));
-  return matches.find((match) => match?.anilistMediaId === media.mediaId) || null;
+  // Last resort: use links returned by Miruro's own search page.
+  const searchCandidates = await searchHtmlCandidatesV2(fetcher, queries);
+  if (!searchCandidates.length) return null;
+  const bestSearchCandidate = searchCandidates[0];
+  const bestScore = titleScoreV2(bestSearchCandidate.names, media.titles);
+  if (bestScore < 85) return null;
+  return {
+    anilistMediaId: media.mediaId,
+    watchUrl: bestSearchCandidate.watchUrl,
+    title: bestSearchCandidate.names[0] || '',
+    episodes: null,
+  };
 }
