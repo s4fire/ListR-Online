@@ -120,3 +120,23 @@ Last updated: 2026-10-03
 - Review now shows duplicate status by AniList media ID.
 - Standalone lists now apply normal defaults: Watching starts at 0 watched; Completed uses the known AniList total when available; Interested has no watched count.
 - Existing category-headed count requirements remain enforced.
+
+## Current UI copy preference
+- User prefers ListR wording to sound casual, direct, and like something they would actually type, not polished marketing/product copy or “AI-generated” phrasing.
+- Keep functional category names such as Watching, Completed, and Interested unchanged.
+- Prefer simple labels such as Friends, Recs, Find anime, Stats, and plain helper text. Avoid overly poetic headings and corporate/product-language phrasing.
+
+## Rollback Version 2
+- Rollback Version 2 is the exact main-branch state immediately before the browser-side Miruro fix work began.
+- Branch: `rollback-v2`.
+- It was created after Miruro resolver PR #11 was merged and before the browser-side Miruro discovery PR #12.
+- Miruro was later fully disabled from the UI in PR #13; the Miruro resolver files remain in the repository but are no longer imported by the frontend.
+
+## Listr Continue Chat Handoff
+- The user wants the phrase **“listr continue”** to act as a cross-chat handoff command for this project. When used, continue from the latest ListR project state and provide/use a summary of the prior chat work before proceeding.
+- This chat focused on the Miruro Watch feature and then disabling it after repeated resolution failures.
+- Miruro resolver history in this chat: server-side exact AniList/catalog matching was attempted; title/search fallbacks were added; the user still received the same no-match error. Research into other Miruro clients/projects found evidence that server/datacenter requests can be blocked while browser requests may work, so a browser-side catalog lookup was attempted. That browser fix initially had a missing normalization helper, which was corrected before merge, but the user chose to disable Miruro entirely because the feature had become too troublesome.
+- PR #11 fixed minimal Miruro catalog payload handling and was merged as `eb2d62c3c5fe055e0966a19f53661c59a8c36bd0`.
+- Browser-side Miruro discovery PR #12 was merged as `160f19c474a3258a42f5236646477477052e499a`. A follow-up harmless push `ed3c5449fc63eaf92127b5f9a2daa5d2ce76cb35` retriggered Pages deployment because the workflow run was not exposed by the connector.
+- Miruro was then disabled in PR #13, merged as `07ca0ae6cf3d208b6592464b29c3a02913a50ac3`. The frontend no longer imports `miruro-v2.js`, no longer renders the Miruro Watch button, and no longer handles its click action. Other ListR functionality was left unchanged.
+- Current work in this chat: simplify ListR copy so tabs/pages sound more like the user's natural wording. The copy branch is `tweak/listr-copy` and currently changes page titles/kickers/helper text toward simpler wording.
