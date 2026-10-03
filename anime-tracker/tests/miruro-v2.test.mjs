@@ -59,23 +59,22 @@ test('episode links use Miruro’s verified ep query and reject non-Miruro desti
   assert.equal(buildMiruroEpisodeUrlV2('https://www.miruro.tv/watch/id/title', 0), null);
 });
 
-test('only Watching entries reach the resolver; cache retains the series and recomputes the latest episode', async () => {
-  const storage = mockStorage();
+test('only Watching entries reach a fresh resolver lookup and recompute the latest episode', async () => {
   let invokes = 0;
   const client = { functions: { invoke: async (_name, { body }) => {
     invokes += 1;
     assert.equal(body.media.mediaId, 195516);
     return { data: { matched: true, anilistMediaId: 195516, watchUrl: 'https://www.miruro.tv/watch/EHT-j9hg7K6M__5XDixVgMh9rKe6Nwcz/the-apothecary-diaries-season-3' }, error: null };
   } } };
-  const first = await resolveMiruroEpisodeUrlV2(client, entry({ watched: 0 }), { storage, now: 1_000 });
+  const first = await resolveMiruroEpisodeUrlV2(client, entry({ watched: 0 }), { storage: mockStorage(), now: 1_000 });
   assert.equal(first.episode, 1);
   assert.equal(new URL(first.url).searchParams.get('ep'), '1');
-  const later = await resolveMiruroEpisodeUrlV2(client, entry({ watched: 6 }), { storage, now: 2_000 });
+  const later = await resolveMiruroEpisodeUrlV2(client, entry({ watched: 6 }), { storage: mockStorage(), now: 2_000 });
   assert.equal(later.episode, 7);
   assert.equal(new URL(later.url).searchParams.get('ep'), '7');
-  assert.equal(invokes, 1);
-  await assert.rejects(resolveMiruroEpisodeUrlV2(client, entry({ category: 'interested' }), { storage }), /only for anime in your Watching list/i);
-  assert.equal(invokes, 1);
+  assert.equal(invokes, 2);
+  await assert.rejects(resolveMiruroEpisodeUrlV2(client, entry({ category: 'interested' }), { storage: mockStorage() }), /only for anime in your Watching list/i);
+  assert.equal(invokes, 2);
 });
 
 test('an AniList ID mismatch or invalid server URL never opens a Miruro link', async () => {
@@ -83,4 +82,20 @@ test('an AniList ID mismatch or invalid server URL never opens a Miruro link', a
   await assert.rejects(resolveMiruroEpisodeUrlV2(client, entry(), { storage: mockStorage() }), /No exact AniList match/i);
   const unsafe = { functions: { invoke: async () => ({ data: { matched: true, anilistMediaId: 195516, watchUrl: 'https://evil.example/watch/id/title' }, error: null }) } };
   await assert.rejects(resolveMiruroEpisodeUrlV2(unsafe, entry(), { storage: mockStorage() }), /invalid Watch page/i);
+});
+
+
+test('catalog title fallback can still resolve when the external AniList mapping is missing', async () => {
+  const fetcher = async (input) => {
+    const url = new URL(input);
+    if (url.origin !== 'https://www.miruro.tv') return new Response('', { status: 404 });
+    if (url.pathname === '/api/v1/anime') return catalogResponse([catalogItem(999)]);
+    if (url.pathname === '/info/opaque-123/the-sample-anime-season-2') {
+      return new Response(infoHtml(42), { status: 200, headers: { 'content-type': 'text/html' } });
+    }
+    return new Response('', { status: 404 });
+  };
+  const match = await resolveMiruroMatchV2({ mediaId: 42, titles: ['The Sample Anime Season 2'] }, fetcher);
+  assert.equal(match?.anilistMediaId, 42);
+  assert.equal(match?.watchUrl, watchUrl);
 });
