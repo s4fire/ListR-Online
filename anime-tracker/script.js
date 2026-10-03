@@ -7,7 +7,6 @@ import { canUseAniListV2, clearAniListOAuthAttemptV2, invokeAniListActionV2, isP
 import { dismissRecommendationV2, getFriendStatsV2, getMyProfileV2, listFriendsV2, listReceivedRecommendationsV2, normalizeUsernameV2, respondFriendRequestV2, searchListRUsersV2, sendFriendRequestV2, setUsernameV2, socialErrorMessageV2, unfriendV2 } from './social-v2.js';
 import { initializeUIEffectsV2 } from './ui-effects-v2.js';
 import { createAppearanceControllerV2 } from './appearance-v2.js';
-import { buildMiruroEpisodeUrlV2, nextEpisodeNumberV2, resolveMiruroEpisodeUrlV2 } from './miruro-v2.js';
 
 // ----------------------------- App state -----------------------------------
 const STORE_KEY = 'afterglow-anime-tracker-v1';
@@ -216,10 +215,7 @@ function renderCard(entry) {
   const totalKnown = isKnownTotal(meta.episodes);
   const total = totalKnown ? Math.floor(meta.episodes) : null;
   const watched = clampWatched(entry.watched, total);
-  const nextEpisode = watched + 1;
-  const watchNext = entry.category === 'watching'
-    ? `<button class="button button-primary watch-next-button" type="button" data-action="watch-next" data-id="${id}" data-episode="${nextEpisode}" aria-label="Open ${escapeHtml(title)}, episode ${nextEpisode}, on Miruro"><span class="watch-next-symbol" aria-hidden="true">▶</span><span class="watch-next-label">Watch on Miruro</span><span class="watch-next-episode">EP ${nextEpisode}</span><span class="watch-next-external" aria-hidden="true">↗</span></button>`
-    : '';
+  const watchNext = '';
   const duration = Number.isFinite(meta.duration) && meta.duration > 0 ? `${meta.duration} min/episode` : '';
   const time = entry.category !== 'interested' && duration ? `<p class="card-time"><strong>${formatHours(watched * meta.duration)} hours watched</strong> <span>· est.</span></p>` : '';
   const statusChip = `<span class="meta-chip">${escapeHtml(formatStatus(meta.status))}</span>`;
@@ -237,43 +233,6 @@ function renderCard(entry) {
     controls = `<div class="episode-controls"><button class="step-button" type="button" data-action="decrease" data-id="${id}" aria-label="Decrease watched episodes for ${escapeHtml(title)}" ${watched <= 0 ? 'disabled' : ''}>−</button><label class="sr-only" for="watched-${id}">Watched episode count for ${escapeHtml(title)}</label><input id="watched-${id}" class="watched-input" type="number" inputmode="numeric" min="0" ${maxAttribute} step="1" value="${watched}" data-action="edit-count" data-id="${id}"><span class="control-total">of ${totalKnown ? total : '?'}</span><button class="step-button" type="button" data-action="increase" data-id="${id}" aria-label="Increase watched episodes for ${escapeHtml(title)}" ${(totalKnown && watched >= total) ? 'disabled' : ''}>+</button><span class="control-spacer"></span></div><div class="card-actions"><label class="sr-only" for="move-${id}">Move ${escapeHtml(title)} to another category</label><select id="move-${id}" class="move-select" data-action="move" data-id="${id}">${moveOptions(entry.category)}</select><button class="remove-button" data-action="remove" data-id="${id}" type="button">Remove</button></div>`;
   }
   return `<article class="anime-card ${entry.category === 'interested' ? 'interested-card' : ''}" data-id="${id}"><div class="cover-wrap">${imageMarkup(meta, title)}<span class="cover-badge"><i></i>${escapeHtml(badgeLabel(entry))}</span></div><div class="card-body"><h3 class="card-title" title="${escapeHtml(title)}">${escapeHtml(title)}</h3><p class="card-subtitle">${escapeHtml(meta.title?.romaji && meta.title?.english ? meta.title.romaji : (meta.format ? String(meta.format).replaceAll('_', ' ') : releaseLabel(meta)))}</p>${progress}<div class="card-meta">${duration ? `<span class="meta-chip">${escapeHtml(duration)}</span>` : ''}${statusChip}${entry.category === 'interested' ? yearChip : ''}</div>${watchNext}${time}${controls}</div></article>`;
-}
-
-async function openMiruroNext(entry, button) {
-  if (!entry || entry.category !== 'watching') return;
-
-  const originalContent = button.innerHTML;
-  button.disabled = true;
-  button.setAttribute('aria-busy', 'true');
-  button.innerHTML = `<span class="watch-next-spinner" aria-hidden="true"></span><span class="watch-next-label">Finding ${escapeHtml(titleOf(entry))} on Miruro…</span>`;
-
-  try {
-    const result = await resolveMiruroEpisodeUrlV2(supabaseClient, entry, { storage });
-    const latest = entries.get(String(entry.id));
-    if (!latest || latest.category !== 'watching') {
-      showToast('This anime is no longer in Watching, so Miruro was not opened.');
-      return;
-    }
-
-    const episode = nextEpisodeNumberV2(latest);
-    const url = buildMiruroEpisodeUrlV2(result.watchUrl, episode);
-    if (!url) throw new Error('Miruro returned an invalid Watch link. Nothing was opened.');
-
-    const opened = window.open(url, '_blank', 'noopener,noreferrer');
-    if (!opened) {
-      window.location.assign(url);
-      return;
-    }
-    showToast(`Opening ${titleOf(latest)} on Miruro at episode ${episode}.`, 'success');
-  } catch (error) {
-    showToast(error?.message || 'Could not find an exact Miruro match. Nothing was opened.', 'error');
-  } finally {
-    if (button.isConnected) {
-      button.disabled = false;
-      button.removeAttribute('aria-busy');
-      button.innerHTML = originalContent;
-    }
-  }
 }
 
 function moveOptions(current) {
