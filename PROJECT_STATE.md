@@ -66,6 +66,7 @@ Last updated: 2026-10-02
 
 ## Recommendation reminder viewport/overflow fix checkpoint
 - Recommendation search result rows constrain their flex children and Select buttons so long titles cannot push the button outside the result border.
+- Move dropdown fix: category move selects now start on a disabled `Move from <current category>` placeholder instead of automatically selecting the first destination. This prevents clicking the already-selected default from appearing nonfunctional while leaving actual move behavior unchanged.
 
 ## Current planned work
 1. Confirm the Supabase Authentication URL Configuration for production.
