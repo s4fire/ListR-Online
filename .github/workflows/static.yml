@@ -25,7 +25,7 @@ jobs:
 
       - name: Verify frontend
         run: |
-          for file in api.js core.js auth-validation.js cloud-store.js supabase-config.js script.js social-v2.js; do
+          for file in api.js core.js auth-validation.js cloud-store.js supabase-config.js script.js social-v2.js ui-modern-v3.js; do
             node --check "anime-tracker/$file"
           done
           test -f anime-tracker/index.html
