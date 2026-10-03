@@ -401,12 +401,26 @@ async function searchHtmlCandidatesV2(fetcher, titles) {
     .slice(0, MIRURO_RESOLVER_LIMITS_V2.candidates);
 }
 
+function directAniListIdCandidatesV2(media) {
+  const candidates = new Map();
+  for (const title of media.titles) {
+    const slug = slugifyTitleV2(title);
+    if (!slug) continue;
+    const infoUrl = safeInfoUrlV2(`/info/${media.mediaId}/${slug}`);
+    const watchUrl = safeWatchUrlV2(`/watch/${media.mediaId}/${slug}`);
+    if (!infoUrl || !watchUrl) continue;
+    candidates.set(infoUrl, { infoUrl, watchUrl, names: [title] });
+  }
+  return [...candidates.values()].slice(0, MIRURO_RESOLVER_LIMITS_V2.candidates);
+}
+
 export async function resolveMiruroMatchV2(rawMedia, fetcher = fetch) {
   const media = validateRequestMediaV2(rawMedia);
   const queries = media.titles.slice(0, MIRURO_RESOLVER_LIMITS_V2.searchQueries);
   const catalogPages = await Promise.all(queries.map((title) => fetchCatalogPageV2(fetcher, title)));
   const catalogCandidates = new Map();
   const titleCandidates = new Map();
+
   for (const payload of catalogPages) {
     for (const candidate of exactCatalogCandidatesV2(payload, media.mediaId)) {
       catalogCandidates.set(candidate.infoUrl, candidate);
@@ -416,18 +430,18 @@ export async function resolveMiruroMatchV2(rawMedia, fetcher = fetch) {
     }
   }
 
-  // Prefer exact AniList catalog mappings. If Miruro omitted that mapping, use a strongly
-  // title-matched catalog candidate, then independently verify the exact AniList ID on the info page.
+  // Prefer exact AniList catalog mappings, then a strong title match.
   let candidates = [...catalogCandidates.values()].slice(0, MIRURO_RESOLVER_LIMITS_V2.candidates);
   if (!candidates.length) candidates = [...titleCandidates.values()].slice(0, MIRURO_RESOLVER_LIMITS_V2.candidates);
+  if (!candidates.length) candidates = directAniListIdCandidatesV2(media);
 
-  // Older Miruro page variants may have server-rendered result links; these remain a fallback only.
+  // Older Miruro page variants remain a final fallback.
   if (!candidates.length) candidates = await searchHtmlCandidatesV2(fetcher, queries);
   if (!candidates.length) return null;
 
   const matches = await Promise.all(candidates.map(async (candidate) => {
     const html = await fetchHtmlV2(fetcher, candidate.infoUrl, MIRURO_RESOLVER_LIMITS_V2.timeoutMs);
-    return extractMiruroAniListMatchV2(html, media.mediaId, candidate.watchUrl);
+    return extractMiruroAniListMatchV2(html, media.mediaId, candidate.watchUrl, candidate.infoUrl);
   }));
   return matches.find((match) => match?.anilistMediaId === media.mediaId) || null;
 }
