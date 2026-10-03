@@ -5,7 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#06111d">
   <meta name="referrer" content="no-referrer">
-  <meta name="description" content="ListR is a simple anime tracker for your Watching, Completed, and Interested lists.">
+  <meta name="description" content="ListR is an anime tracker for Watching, Completed, and Interested lists, with AniList metadata and optional cloud sync.">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="ListR — Anime Tracker">
+  <meta property="og:description" content="Track what you are watching, what you finished, and what you want to watch next.">
+  <meta property="og:site_name" content="ListR">
+  <meta property="og:url" content="https://s4fire.github.io/ListR-Online/anime-tracker/">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="ListR — Anime Tracker">
+  <meta name="twitter:description" content="A simple anime tracker for Watching, Completed, and Interested lists.">
   <title>ListR — Anime Tracker</title>
   <link rel="icon" type="image/svg+xml" href="./favicon_v2.svg">
   <link rel="preconnect" href="https://graphql.anilist.co">
@@ -14,12 +22,14 @@
   <link rel="stylesheet" href="./style.css">
   <link rel="stylesheet" href="./account.css">
   <link rel="stylesheet" href="./appearance-v2.css">
+  <link rel="stylesheet" href="./ui-modern-v3.css">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script type="module" src="./script.js"></script>
+  <script type="module" src="./ui-modern-v3.js"></script>
 </head>
 <body class="auth-loading">
   <a class="skip-link" href="#main-content">Skip to main content</a>
-  <div id="app-loading" class="app-loading" role="status">Loading your list…</div>
+  <div id="app-loading" class="app-loading" role="status">Loading…</div>
   <div class="app-shell">
     <header class="topbar">
       <a class="brand" href="#home" aria-label="ListR Home" data-home-link>
@@ -92,7 +102,12 @@
     </section>
 
     <section id="migration-banner" class="migration-banner" aria-labelledby="migration-title" hidden>
-      <div><span class="section-kicker">LOCAL LIST</span><h2 id="migration-title">Import your guest list?</h2><p id="migration-copy">Your browser has anime saved locally. Importing copies only missing AniList IDs to this account; your guest list is kept unchanged.</p></div>
+      <div><span class="section-kicker">LOCAL LIST</span><h2 id="migration-title">Import your guest list?</h2><p id="migration-copy">Your guest list is separate from your cloud library. Importing adds only anime that are not already in this account.</p></div>
+      <div class="import-progress" id="migration-progress" hidden role="status" aria-live="polite" aria-atomic="true">
+          <span class="import-progress-icon" aria-hidden="true"></span>
+          <span class="import-progress-main"><span class="import-progress-text" id="migration-progress-text">Preparing import…</span><progress class="import-progress-bar" id="migration-progress-bar" max="1" value="0" aria-label="Guest list import progress"></progress></span>
+          <span class="import-progress-count" id="migration-progress-count">0 / 0</span>
+        </div>
       <div class="migration-actions"><button class="button button-primary" id="import-guest" type="button">Import guest list</button><button class="button button-quiet" id="dismiss-import" type="button">Later</button></div>
     </section>
 
@@ -101,7 +116,7 @@
         <div class="home-hero">
           <div class="home-hero-copy">
             <p class="eyebrow"><span class="live-dot"></span> YOUR LIST</p>
-            <h1 id="home-title">Your anime list.</h1>
+            <h1 id="home-title">Your anime list</h1>
             <p class="home-hero-subtitle">Track what you’re watching, what you finished, and what you wanna watch next.</p>
             <div class="home-hero-actions">
               <button class="button button-primary" id="home-open-library" type="button">Open list <span aria-hidden="true">↗</span></button>
@@ -118,7 +133,7 @@
         </div>
 
         <div class="home-section-heading">
-          <div><span class="section-kicker">STATS</span><h2>Your stats.</h2></div>
+          <div><span class="section-kicker">STATS</span><h2>Stats</h2></div>
           <button class="text-action" id="home-open-stats" type="button">View stats <span aria-hidden="true">→</span></button>
         </div>
         <div class="home-stat-grid" aria-label="Library summary">
@@ -182,13 +197,13 @@
         </div>
         <div id="collection-grid" class="anime-grid" aria-live="polite"></div>
         <div id="collection-empty" class="empty-state" hidden>
-          <div class="empty-orbit" aria-hidden="true">✦</div><h3>Nothing here yet.</h3><p>Add an anime to get started.</p><button class="button button-primary" id="empty-add" type="button">Browse</button>
+          <div class="empty-orbit" aria-hidden="true">✦</div><h3>Empty. Go add something.</h3><p>Add an anime to get started.</p><button class="button button-primary" id="empty-add" type="button">Add anime</button>
         </div>
         <p id="local-note" class="local-note"><span aria-hidden="true">◈</span> Guest lists stay in this browser. Sign in to sync a separate private cloud list.</p>
       </section>
 
       <section class="page-view social-view" id="friends-view" aria-labelledby="friends-title" hidden>
-        <div class="subpage-heading"><p class="eyebrow">FRIENDS</p><h1 id="friends-title">Friends.</h1><p>Find people by username, add them, and send anime recs.</p></div>
+        <div class="subpage-heading"><p class="eyebrow">FRIENDS</p><h1 id="friends-title">Friends</h1><p>Find people by username, add them, and send anime recs.</p></div>
         <div class="social-toolbar">
           <button class="button button-quiet" id="edit-username" type="button" hidden>Set username</button>
           <button class="button button-quiet" id="refresh-friends" type="button">↻ Refresh</button>
@@ -197,7 +212,7 @@
           <label class="field-with-icon search-input"><span aria-hidden="true">⌕</span><input id="friend-query" type="search" placeholder="Search username (3+ characters)" autocomplete="off" minlength="3" maxlength="20" aria-label="Search ListR usernames" required></label>
           <button class="button button-primary search-submit" type="submit">Search</button>
         </form>
-        <p id="friends-message" class="message" role="status" aria-live="polite">Sign in and choose a username to use Friends.</p>
+        <p id="friends-message" class="message" role="status" aria-live="polite">Sign in and choose a username to use Friends</p>
         <div class="social-columns">
           <section class="social-panel" aria-labelledby="incoming-title"><div class="panel-heading"><div><span class="section-kicker">REQUESTS</span><h2 id="incoming-title">Friend requests</h2></div></div><div id="incoming-friends" class="social-list"></div></section>
           <section class="social-panel" aria-labelledby="friends-list-title"><div class="panel-heading"><div><span class="section-kicker">FRIENDS</span><h2 id="friends-list-title">Friends</h2></div></div><div id="friends-list" class="social-list"></div></section>
@@ -206,7 +221,7 @@
       </section>
 
       <section class="page-view social-view" id="recommendations-view" aria-labelledby="recommendations-title" hidden>
-        <div class="subpage-heading"><p class="eyebrow">RECS</p><h1 id="recommendations-title">Your friends’ <span>recs.</span></h1><p>Accept one to add it to your Interested list.</p></div>
+        <div class="subpage-heading"><p class="eyebrow">RECS</p><h1 id="recommendations-title">Your friends’ recs</h1><p>Accept one to add it to your Interested list.</p></div>
         <div class="social-toolbar"><button class="button button-quiet" id="refresh-recommendations" type="button">↻ Refresh</button></div>
         <p id="recommendations-message" class="message" role="status" aria-live="polite">Sign in to see recommendations sent to you.</p>
         <div id="recommendations-list" class="anime-grid social-anime-grid"></div>
@@ -214,7 +229,7 @@
       </section>
 
       <section class="page-view" id="search-view" aria-labelledby="search-title" hidden>
-        <div class="subpage-heading"><p class="eyebrow">SEARCH</p><h1 id="search-title">Find <span>anime.</span></h1><p>Search AniList and add anime to your list.</p></div>
+        <div class="subpage-heading"><p class="eyebrow">SEARCH</p><h1 id="search-title">Find anime</h1><p>Search AniList and add anime to your list.</p></div>
         <form id="search-form" class="search-panel">
           <label class="field-with-icon search-input"><span aria-hidden="true">⌕</span><input id="anime-query" name="q" type="search" placeholder="Try “Frieren” or “Cowboy Bebop”…" autocomplete="off" required minlength="2" aria-label="Search anime"></label>
           <label class="select-wrap category-select"><span class="sr-only">Category to add to</span><select id="add-category" aria-label="Category to add search results to"><option value="watching">Add to Watching</option><option value="completed">Add to Completed</option><option value="interested">Add to Interested</option></select></label>
@@ -225,7 +240,7 @@
       </section>
 
       <section class="page-view" id="stats-view" aria-labelledby="stats-title" hidden>
-        <div class="subpage-heading"><p class="eyebrow">STATS</p><h1>Your <span>stats.</span></h1><p>Anime count, episodes watched, and watch time.</p></div>
+        <div class="subpage-heading"><p class="eyebrow">STATS</p><h1>Your stats</h1><p>Anime count, episodes watched, and watch time.</p></div>
         <div class="stats-grid">
           <article class="stat-card stat-feature"><span class="stat-icon">◈</span><span class="stat-label">TOTAL</span><strong id="stat-total">0</strong><small>anime on your list</small></article>
           <article class="stat-card"><span class="stat-icon icon-purple">◉</span><span class="stat-label">WATCHING</span><strong id="stat-watching">0</strong><small>in progress</small></article>
@@ -233,8 +248,8 @@
           <article class="stat-card"><span class="stat-icon icon-blue">☆</span><span class="stat-label">INTERESTED</span><strong id="stat-interested">0</strong><small>on your list</small></article>
         </div>
         <div class="stats-lower">
-          <article class="stats-panel watchtime-panel"><div class="panel-heading"><div><span class="section-kicker">WATCH TIME</span><h2>Time watched.</h2></div><span class="panel-star" aria-hidden="true">✧</span></div><div class="time-value"><strong id="stat-hours">0</strong><span>hours<br>watched</span></div><div class="time-divider"></div><div class="time-secondary"><span><b id="stat-days">0</b> days across your anime list</span><span class="time-footnote">Based on AniList episode lengths</span></div></article>
-          <article class="stats-panel episode-panel"><div class="panel-heading"><div><span class="section-kicker">PROGRESS</span><h2>Your episodes.</h2></div><span class="episode-icon" aria-hidden="true">▶</span></div><div class="episode-total"><strong id="stat-episodes">0</strong><span>episodes watched</span></div><div class="category-bars"><div class="bar-row"><span>Watching</span><div class="bar-track"><i id="bar-watching"></i></div><b id="bar-watching-value">0</b></div><div class="bar-row"><span>Completed</span><div class="bar-track"><i id="bar-completed"></i></div><b id="bar-completed-value">0</b></div></div><p class="stats-footnote">Interested anime aren’t included in the watched total.</p></article>
+          <article class="stats-panel watchtime-panel"><div class="panel-heading"><div><span class="section-kicker">WATCH TIME</span><h2>Time watched</h2></div><span class="panel-star" aria-hidden="true">✧</span></div><div class="time-value"><strong id="stat-hours">0</strong><span>hours<br>watched</span></div><div class="time-divider"></div><div class="time-secondary"><span><b id="stat-days">0</b> days across your anime list</span><span class="time-footnote">Based on AniList episode lengths</span></div></article>
+          <article class="stats-panel episode-panel"><div class="panel-heading"><div><span class="section-kicker">PROGRESS</span><h2>Your episodes</h2></div><span class="episode-icon" aria-hidden="true">▶</span></div><div class="episode-total"><strong id="stat-episodes">0</strong><span>episodes watched</span></div><div class="category-bars"><div class="bar-row"><span>Watching</span><div class="bar-track"><i id="bar-watching"></i></div><b id="bar-watching-value">0</b></div><div class="bar-row"><span>Completed</span><div class="bar-track"><i id="bar-completed"></i></div><b id="bar-completed-value">0</b></div></div><p class="stats-footnote">Interested anime aren’t included in the watched total.</p></article>
         </div>
       </section>
 
@@ -247,7 +262,7 @@
     <div class="auth-brand"><span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span><span>ListR<span class="brand-dot">.</span></span></div>
     <p class="eyebrow auth-eyebrow">YOUR LIST</p>
     <h2 id="auth-title">Welcome back.</h2>
-    <p id="auth-intro" class="auth-intro">Sign in to load your list.</p>
+    <p id="auth-intro" class="auth-intro">Log in to get your list back.</p>
     <div class="auth-tabs" role="group" aria-label="Account action">
       <button id="auth-tab-login" class="auth-tab is-active" type="button" aria-pressed="true">Sign in</button>
       <button id="auth-tab-register" class="auth-tab" type="button" aria-pressed="false">Create account</button>
@@ -282,9 +297,9 @@
     <fieldset class="appearance-group">
       <legend>Page layout</legend>
       <div class="appearance-options appearance-layout-options" role="group" aria-label="Page layout">
-        <button class="appearance-option" type="button" data-appearance-layout="current" aria-pressed="true"><span class="layout-preview layout-preview-current" aria-hidden="true"><i></i><i></i><i></i></span><span><strong>Current</strong><small>Current layout</small></span></button>
-        <button class="appearance-option" type="button" data-appearance-layout="reworked-old" aria-pressed="false"><span class="layout-preview layout-preview-old" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span><strong>Reworked Old</strong><small>Old layout</small></span></button>
-        <button class="appearance-option" type="button" data-appearance-layout="new" aria-pressed="false"><span class="layout-preview layout-preview-new" aria-hidden="true"><i></i><i></i></span><span><strong>New</strong><small>New layout</small></span></button>
+        <button class="appearance-option" type="button" data-appearance-layout="current" aria-pressed="true"><span class="layout-preview layout-preview-current" aria-hidden="true"><i></i><i></i><i></i></span><span><strong>Rail</strong><small>Side rail</small></span></button>
+        <button class="appearance-option" type="button" data-appearance-layout="reworked-old" aria-pressed="false"><span class="layout-preview layout-preview-old" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span><strong>Compact</strong><small>Top nav + grid</small></span></button>
+        <button class="appearance-option" type="button" data-appearance-layout="new" aria-pressed="false"><span class="layout-preview layout-preview-new" aria-hidden="true"><i></i><i></i></span><span><strong>Split</strong><small>Wide workspace</small></span></button>
       </div>
     </fieldset>
     <p id="appearance-sync-status" class="appearance-sync-status" role="status" aria-live="polite">Appearance saved in this browser.</p>
@@ -293,7 +308,7 @@
   <dialog id="username-dialog" class="auth-dialog social-dialog" aria-labelledby="username-dialog-title">
     <button class="dialog-close" id="close-username" type="button" aria-label="Close username dialog">×</button>
     <p class="eyebrow auth-eyebrow">USERNAME</p><h2 id="username-dialog-title">Choose your username.</h2>
-    <p class="auth-intro">Pick a username so other ListR users can find you. Your email stays private.</p>
+    <p class="auth-intro">Pick a username. Friends search for you by it. Your email stays private.</p>
     <form id="username-form" novalidate><label class="auth-field" for="profile-username">Username<input id="profile-username" name="username" type="text" minlength="3" maxlength="20" autocomplete="username" autocapitalize="none" spellcheck="false" required></label><p id="username-message" class="auth-message" role="status" aria-live="polite"></p><button id="username-submit" class="button button-primary auth-submit" type="submit">Save username</button></form>
   </dialog>
 
@@ -315,6 +330,6 @@
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <noscript><div class="noscript">ListR needs JavaScript enabled to search AniList and manage your tracker.</div></noscript>
+  <noscript><div class="noscript"><div><strong>ListR needs JavaScript.</strong><br>Enable JavaScript to search AniList and manage your tracker. Your guest library stays in this browser until you choose to sign in.</div></div></noscript>
 </body>
 </html>
